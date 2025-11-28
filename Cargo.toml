@@ -1,0 +1,29 @@
+[package]
+name = "haretropanel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = { version = "0.8", features = ["macros"] }
+tokio = { version = "1.48", features = ["full"] }
+
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
+askama = "0.14"
+async-trait = "0.1"
+thiserror = "2"
+dotenvy = "0.15"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-appender = "0.2"
+
+tower-http = { version = "0.6", features = ["trace"] }
+
+url = "2"
+
+[package.metadata.askama]
+dir = "templates"

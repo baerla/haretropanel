@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}HARetroPanel - Home Assistant panel{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <h1>HARetroPanel - Home Assistant panel</h1>
+    <div class="toolbar-actions">
+        <a href="/?page={{ current_page }}&force_refresh=1" class="toolbar-link">
+            Refresh
+        </a>
+        <a href="/settings/entities" class="toolbar-link">
+            Settings
+        </a>
+    </div>
+</div>
+
+<div class="pagination">
+    {% if current_page > 1 %}
+        <a href="/?page={{ current_page - 1 }}" class="pager-link">&laquo; Prev</a>
+    {% else %}
+        <span class="pager-disabled">&laquo; Prev</span>
+    {% endif %}
+
+    <span class="pager-info">
+        Page {{ current_page }} / {{ total_pages }}
+    </span>
+
+    {% if current_page < total_pages %}
+        <a href="/?page={{ current_page + 1 }}" class="pager-link">Next &raquo;</a>
+    {% else %}
+        <span class="pager-disabled">Next &raquo;</span>
+    {% endif %}
+</div>
+
+<div class="grid">
+    {% for entity in entities %}
+    <div class="card">
+        <h2 class="card-title">{{ entity.name }}</h2>
+
+        <p class="card-meta">Type: {{ entity.kind_label }}</p>
+
+        {% if entity.has_value %}
+        <p class="card-value">Value: {{ entity.value }}</p>
+        {% else %}
+        <p class="card-value">
+            Value:
+            {% if entity.is_on %}on{% else %}off{% endif %}
+        </p>
+        {% endif %}
+
+        {% if entity.can_toggle %}
+        <form method="post" action="/toggle" style="margin-top: 0.5rem;">
+            <input type="hidden" name="entity_id" value="{{ entity.id }}">
+            <button type="submit" class="btn">
+                Toggle
+            </button>
+        </form>
+        {% endif %}
+
+        {% if entity.can_run_script %}
+        <form method="post" action="/run_script" style="margin-top: 0.5rem;">
+            <input type="hidden" name="entity_id" value="{{ entity.id }}">
+            <button type="submit" class="btn">
+                Run
+            </button>
+        </form>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
