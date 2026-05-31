@@ -24,7 +24,7 @@
             <div class="panel-title">Solar Production</div>
             <div class="solar-diagram">
                 <div class="solar-ring">
-                    <div class="solar-fill" style="width: {{ dashboard.solar.percent }}%;"></div>
+                    <canvas id="solarChart" class="solar-canvas"></canvas>
                     <div class="solar-center">
                         <div class="solar-watts">{{ dashboard.solar.watts_label }}</div>
                         <div class="solar-max">{{ dashboard.solar.max_watts_label }}</div>
@@ -37,6 +37,49 @@
                     </div>
                     <div class="scale-label">{{ dashboard.solar.percent }}%</div>
                 </div>
+                <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js"></script>
+                <script>
+                    (function () {
+                        var ctx = document.getElementById('solarChart');
+                        if (!ctx || !window.Chart) {
+                            return;
+                        }
+                        var labels = {{ dashboard.solar.chart_labels_js | safe }};
+                        var values = {{ dashboard.solar.chart_values_js | safe }};
+                        new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    data: values,
+                                    borderColor: 'rgba(90, 230, 180, 0.9)',
+                                    backgroundColor: 'rgba(70, 160, 255, 0.18)',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    lineTension: 0.2
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                animation: { duration: 0 },
+                                legend: { display: false },
+                                tooltips: { enabled: false },
+                                scales: {
+                                    xAxes: [{
+                                        display: false,
+                                        gridLines: { display: false }
+                                    }],
+                                    yAxes: [{
+                                        display: false,
+                                        gridLines: { display: false },
+                                        ticks: { beginAtZero: true }
+                                    }]
+                                }
+                            }
+                        });
+                    })();
+                </script>
             </div>
         </div>
 
@@ -45,6 +88,7 @@
             <div class="charger-body">
                 <div class="charger-reading">{{ dashboard.charger.amps_label }}</div>
                 <div class="charger-status">{{ dashboard.charger.status_label }}</div>
+                <div class="charger-car-state">{{ dashboard.charger.car_state_label }}</div>
                 <div class="charger-meta">Ladestrom aktuell</div>
             </div>
         </div>

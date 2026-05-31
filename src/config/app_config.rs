@@ -14,9 +14,20 @@ pub struct AppConfig {
     // entity ids for the dashboard
     pub solar_entity_id: String,
     pub charger_current_entity_id: String,
+    pub goe_status_entity_id: String,
+    pub goe_energy_entity_id: String,
+    pub goe_car_connected_entity_id: String,
     pub garage_left_entity_id: String,
     pub garage_right_entity_id: String,
     pub solar_max_watts: f64,
+
+    // solar history
+    pub solar_history_minutes: u64,
+    pub solar_sample_secs: u64,
+
+    // go-e energy tracking
+    pub goe_energy_stable_secs: u64,
+    pub goe_energy_delta_kwh: f64,
 
     // logging
     pub log_dir: String,
@@ -61,7 +72,13 @@ impl AppConfig {
         let solar_entity_id = env::var("HARETROPANEL_SOLAR_ENTITY_ID")
             .unwrap_or_else(|_| "sensor.solar_power".to_string());
         let charger_current_entity_id = env::var("HARETROPANEL_CHARGER_CURRENT_ENTITY_ID")
-            .unwrap_or_else(|_| "sensor.goe_charger_current".to_string());
+            .unwrap_or_else(|_| "sensor.goe_055063_nrg_11".to_string());
+        let goe_status_entity_id = env::var("HARETROPANEL_GOE_STATUS_ENTITY_ID")
+            .unwrap_or_else(|_| "sensor.goe_055063_modelstatus_value".to_string());
+        let goe_energy_entity_id = env::var("HARETROPANEL_GOE_ENERGY_ENTITY_ID")
+            .unwrap_or_else(|_| "sensor.goe_055063_eto".to_string());
+        let goe_car_connected_entity_id = env::var("HARETROPANEL_GOE_CAR_CONNECTED_ENTITY_ID")
+            .unwrap_or_else(|_| "binary_sensor.goe_055063_car_0".to_string());
         let garage_left_entity_id = env::var("HARETROPANEL_GARAGE_LEFT_ENTITY_ID")
             .unwrap_or_else(|_| "cover.garage_left".to_string());
         let garage_right_entity_id = env::var("HARETROPANEL_GARAGE_RIGHT_ENTITY_ID")
@@ -70,6 +87,24 @@ impl AppConfig {
             .unwrap_or_else(|_| "9000".to_string())
             .parse()
             .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_SOLAR_MAX_WATTS: {e}")))?;
+
+        let solar_history_minutes = env::var("HARETROPANEL_SOLAR_HISTORY_MINUTES")
+            .unwrap_or_else(|_| "60".to_string())
+            .parse()
+            .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_SOLAR_HISTORY_MINUTES: {e}")))?;
+        let solar_sample_secs = env::var("HARETROPANEL_SOLAR_SAMPLE_SECS")
+            .unwrap_or_else(|_| "60".to_string())
+            .parse()
+            .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_SOLAR_SAMPLE_SECS: {e}")))?;
+
+        let goe_energy_stable_secs = env::var("HARETROPANEL_GOE_ENERGY_STABLE_SECS")
+            .unwrap_or_else(|_| "120".to_string())
+            .parse()
+            .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_GOE_ENERGY_STABLE_SECS: {e}")))?;
+        let goe_energy_delta_kwh = env::var("HARETROPANEL_GOE_ENERGY_DELTA_KWH")
+            .unwrap_or_else(|_| "0.02".to_string())
+            .parse()
+            .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_GOE_ENERGY_DELTA_KWH: {e}")))?;
 
         let log_dir = env::var("HARETROPANEL_LOG_DIR").unwrap_or_else(|_| "./logs".to_string());
 
@@ -124,9 +159,16 @@ impl AppConfig {
             demo_mode,
             solar_entity_id,
             charger_current_entity_id,
+            goe_status_entity_id,
+            goe_energy_entity_id,
+            goe_car_connected_entity_id,
             garage_left_entity_id,
             garage_right_entity_id,
             solar_max_watts,
+            solar_history_minutes,
+            solar_sample_secs,
+            goe_energy_stable_secs,
+            goe_energy_delta_kwh,
             log_dir,
             log_rotation,
             log_level,

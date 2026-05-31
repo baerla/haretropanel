@@ -57,6 +57,18 @@ pub async fn get_dashboard(
         .entities
         .iter()
         .find(|e| e.id.0 == cfg.charger_current_entity_id);
+    let goe_status_entity = dashboard_state
+        .entities
+        .iter()
+        .find(|e| e.id.0 == cfg.goe_status_entity_id);
+    let goe_energy_entity = dashboard_state
+        .entities
+        .iter()
+        .find(|e| e.id.0 == cfg.goe_energy_entity_id);
+    let goe_car_entity = dashboard_state
+        .entities
+        .iter()
+        .find(|e| e.id.0 == cfg.goe_car_connected_entity_id);
     let garage_left_entity = dashboard_state
         .entities
         .iter()
@@ -89,24 +101,72 @@ pub async fn get_dashboard(
         "Max unavailable".to_string()
     };
 
+    let history = state.dashboard_service.solar_history_points().await;
+    let now = std::time::Instant::now();
+    let mut labels: Vec<String> = Vec::new();
+    let mut values: Vec<String> = Vec::new();
+    let max_points = (cfg.solar_history_minutes * 60 / cfg.solar_sample_secs).max(1) as usize;
+
+    for (idx, (ts, watts)) in history.iter().enumerate() {
+        if idx + max_points < history.len() {
+            continue;
+        }
+        let age = now.duration_since(*ts).as_secs();
+        let mins = age / 60;
+        labels.push(format!("-{}m", mins));
+        values.push(format!("{:.0}", watts));
+    }
+
+    if labels.is_empty() {
+        labels.push("now".to_string());
+        values.push(format!("{:.0}", solar_watts));
+    }
+
     let solar_vm = SolarViewModel {
         watts_label: format!("{:.0} W", solar_watts),
         percent,
         max_watts_label,
+        chart_labels_js: format!("[{}]", labels.iter().map(|l| format!("\"{}\"", l)).collect::<Vec<_>>().join(",")),
+        chart_values_js: format!("[{}]", values.join(",")),
     };
 
     let charger_value = charger_entity
         .and_then(|e| e.value.clone())
-        .unwrap_or_else(|| "0 A".to_string());
-    let charger_status = if charger_value.starts_with('0') {
-        "Idle"
-    } else {
-        "Charging"
-    };
+        .unwrap_or_else(|| "0 W".to_string());
+
+    let goe_status = goe_status_entity
+        .and_then(|e| e.value.clone())
+        .unwrap_or_else(|| "Unknown".to_string());
+
+    let goe_energy = goe_energy_entity
+        .and_then(|e| e.value.clone())
+        .and_then(|v| v.split_whitespace().next().map(|s| s.to_string()))
+        .unwrap_or_else(|| "0".to_string());
+
+    let goe_energy_value = goe_energy.parse::<f64>().unwrap_or(0.0);
+
+    let mut car_connected = false;
+    if let Some(e) = goe_car_entity {
+        car_connected = e.is_on || e.value.as_deref() == Some("on");
+    }
+
+    let mut car_state_label = "Car not present".to_string();
+    if car_connected {
+        car_state_label = "Charging".to_string();
+    }
+
+    if goe_status.to_lowercase().contains("nicht") || goe_status.to_lowercase().contains("stopp") {
+        car_state_label = "Car not present".to_string();
+    }
+
+    if goe_status.to_lowercase().contains("fertig") || goe_status.to_lowercase().contains("abgeschlossen") {
+        car_state_label = "Car full".to_string();
+    }
 
     let charger_vm = ChargerViewModel {
         amps_label: charger_value,
-        status_label: charger_status.to_string(),
+        status_label: goe_status,
+        car_state_label,
     };
 
     let make_garage_vm = |entity: Option<&crate::domain::Entity>, default_name: &str| {

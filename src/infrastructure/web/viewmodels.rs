@@ -55,11 +55,14 @@ pub struct SolarViewModel {
     pub watts_label: String,
     pub percent: u8,
     pub max_watts_label: String,
+    pub chart_labels_js: String,
+    pub chart_values_js: String,
 }
 
 pub struct ChargerViewModel {
     pub amps_label: String,
     pub status_label: String,
+    pub car_state_label: String,
 }
 
 pub struct GarageDoorViewModel {

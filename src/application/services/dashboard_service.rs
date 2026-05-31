@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -37,11 +37,18 @@ struct CachedDashboardState {
     fetched_at: Instant,
 }
 
+#[derive(Clone, Debug)]
+struct SolarSample {
+    timestamp: Instant,
+    watts: f64,
+}
+
 pub struct DashboardService {
     ha_client: Arc<dyn HomeAssistantClient>,
     layout_repo: Arc<dyn DashboardLayoutRepository>,
     cache_config: DashboardCacheConfig,
     state_cache: RwLock<Option<CachedDashboardState>>,
+    solar_history: RwLock<VecDeque<SolarSample>>,
     config: crate::config::AppConfig,
 }
 
@@ -57,6 +64,7 @@ impl DashboardService {
             layout_repo,
             cache_config,
             state_cache: RwLock::new(None),
+            solar_history: RwLock::new(VecDeque::new()),
             config,
         }
     }
@@ -110,6 +118,33 @@ impl DashboardService {
         let fresh = self.ha_client.fetch_dashboard_state().await?;
         let ttl = self.ttl_for_state(&fresh);
 
+        if let Some(solar) = fresh
+            .entities
+            .iter()
+            .find(|e| e.id.0 == self.config.solar_entity_id)
+        {
+            if let Some(value) = &solar.value {
+                if let Ok(watts) = value
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("0")
+                    .parse::<f64>()
+                {
+                    let mut history = self.solar_history.write().await;
+                    history.push_back(SolarSample { timestamp: now, watts });
+
+                    let max_age = Duration::from_secs(self.config.solar_history_minutes * 60);
+                    while let Some(front) = history.front() {
+                        if now.duration_since(front.timestamp) > max_age {
+                            history.pop_front();
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         {
             let mut cache = self.state_cache.write().await;
             *cache = Some(CachedDashboardState {
@@ -133,6 +168,14 @@ impl DashboardService {
 
     pub fn config(&self) -> &crate::config::AppConfig {
         &self.config
+    }
+
+    pub async fn solar_history_points(&self) -> Vec<(Instant, f64)> {
+        let history = self.solar_history.read().await;
+        history
+            .iter()
+            .map(|sample| (sample.timestamp, sample.watts))
+            .collect()
     }
 
     pub async fn get_all_entities(&self) -> AppResult<DashboardState> {
