@@ -4,7 +4,7 @@ use serde::Deserialize;
 pub struct HaStateResponse {
     pub entity_id: String,
     pub state: String,
-    
+
     #[serde(default)]
     pub attributes: HaAttributes,
 }

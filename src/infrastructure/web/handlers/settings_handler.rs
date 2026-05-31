@@ -16,9 +16,7 @@ use crate::{
     shared::error::AppResult,
 };
 
-pub async fn get_entity_settings(
-    State(state): State<AppState>,
-) -> AppResult<impl IntoResponse> {
+pub async fn get_entity_settings(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
     let all_state = state.dashboard_service.get_all_entities().await?;
 
     let selected_ids = state.dashboard_service.get_visible_entity_ids().await?;

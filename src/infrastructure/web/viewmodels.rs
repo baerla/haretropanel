@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use askama::Template;
 
-use crate::domain::{DashboardState, Entity, EntityKind};
+use crate::domain::{Entity, EntityKind};
 
 #[derive(Debug)]
 pub struct EntityViewModel {
@@ -14,6 +12,7 @@ pub struct EntityViewModel {
     pub value: String,
     pub can_toggle: bool,
     pub can_run_script: bool,
+    pub can_toggle_cover: bool,
 }
 
 impl From<&Entity> for EntityViewModel {
@@ -24,6 +23,7 @@ impl From<&Entity> for EntityViewModel {
             EntityKind::Sensor => "Sensor",
             EntityKind::Climate => "Climate",
             EntityKind::Script => "Script",
+            EntityKind::Cover => "Cover",
         }
         .to_string();
 
@@ -35,6 +35,7 @@ impl From<&Entity> for EntityViewModel {
 
         let can_toggle = matches!(e.kind, EntityKind::Light | EntityKind::Switch);
         let can_run_script = matches!(e.kind, EntityKind::Script);
+        let can_toggle_cover = matches!(e.kind, EntityKind::Cover);
 
         Self {
             id: e.id.to_string(),
@@ -45,55 +46,42 @@ impl From<&Entity> for EntityViewModel {
             value,
             can_toggle,
             can_run_script,
+            can_toggle_cover,
         }
     }
 }
 
-pub struct DashboardPageViewModel {
-    pub entities: Vec<EntityViewModel>,
-    pub current_page: usize,
-    pub total_pages: usize,
+pub struct SolarViewModel {
+    pub watts_label: String,
+    pub percent: u8,
+    pub max_watts_label: String,
 }
 
-impl DashboardPageViewModel {
-    pub fn from_state_and_pages(
-        state: DashboardState,
-        entity_pages: &HashMap<String, usize>,
-        requested_page: usize,
-    ) -> Self {
-        let items: Vec<(usize, EntityViewModel)> = state
-            .entities
-            .iter()
-            .map(|e| {
-                let id = e.id.to_string();
-                let page = entity_pages.get(&id).cloned().unwrap_or(1).max(1);
-                (page, EntityViewModel::from(e))
-            })
-            .collect();
+pub struct ChargerViewModel {
+    pub amps_label: String,
+    pub status_label: String,
+}
 
-        let total_pages = items.iter().map(|(p, _)| *p).max().unwrap_or(1);
-        let page = requested_page.clamp(1, total_pages);
+pub struct GarageDoorViewModel {
+    pub id: String,
+    pub name: String,
+    pub status_label: String,
+    pub action_label: String,
+    pub button_class: String,
+}
 
-        let entities = items
-            .into_iter()
-            .filter(|(p, _)| *p == page)
-            .map(|(_, vm)| vm)
-            .collect();
-
-        Self {
-            entities,
-            current_page: page,
-            total_pages,
-        }
-    }
+pub struct DashboardViewModel {
+    pub solar: SolarViewModel,
+    pub charger: ChargerViewModel,
+    pub garage_left: GarageDoorViewModel,
+    pub garage_right: GarageDoorViewModel,
+    pub demo_mode: bool,
 }
 
 #[derive(Template)]
 #[template(path = "dashboard.html")]
 pub struct DashboardTemplate<'a> {
-    pub entities: &'a [EntityViewModel],
-    pub current_page: usize,
-    pub total_pages: usize,
+    pub dashboard: &'a DashboardViewModel,
 }
 
 #[derive(Debug)]

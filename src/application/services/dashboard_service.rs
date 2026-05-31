@@ -42,6 +42,7 @@ pub struct DashboardService {
     layout_repo: Arc<dyn DashboardLayoutRepository>,
     cache_config: DashboardCacheConfig,
     state_cache: RwLock<Option<CachedDashboardState>>,
+    config: crate::config::AppConfig,
 }
 
 impl DashboardService {
@@ -49,23 +50,35 @@ impl DashboardService {
         ha_client: Arc<dyn HomeAssistantClient>,
         layout_repo: Arc<dyn DashboardLayoutRepository>,
         cache_config: DashboardCacheConfig,
+        config: crate::config::AppConfig,
     ) -> Self {
         Self {
             ha_client,
             layout_repo,
             cache_config,
             state_cache: RwLock::new(None),
+            config,
         }
     }
 
     fn ttl_secs_for_kind(&self, kind: &EntityKind) -> u64 {
         match kind {
-            EntityKind::Light => self.cache_config.light_ttl_secs.unwrap_or(self.cache_config.default_ttl_secs),
-            EntityKind::Switch => self.cache_config.switch_ttl_secs.unwrap_or(self.cache_config.default_ttl_secs),
-            EntityKind::Sensor => self.cache_config.sensor_ttl_secs.unwrap_or(self.cache_config.default_ttl_secs),
-            EntityKind::Climate | EntityKind::Script => {
-                self.cache_config.climate_ttl_secs.unwrap_or(self.cache_config.default_ttl_secs)
-            }
+            EntityKind::Light => self
+                .cache_config
+                .light_ttl_secs
+                .unwrap_or(self.cache_config.default_ttl_secs),
+            EntityKind::Switch => self
+                .cache_config
+                .switch_ttl_secs
+                .unwrap_or(self.cache_config.default_ttl_secs),
+            EntityKind::Sensor => self
+                .cache_config
+                .sensor_ttl_secs
+                .unwrap_or(self.cache_config.default_ttl_secs),
+            EntityKind::Climate | EntityKind::Script | EntityKind::Cover => self
+                .cache_config
+                .climate_ttl_secs
+                .unwrap_or(self.cache_config.default_ttl_secs),
         }
     }
 
@@ -116,6 +129,10 @@ impl DashboardService {
     async fn invalidate_cache(&self) {
         let mut cache = self.state_cache.write().await;
         *cache = None;
+    }
+
+    pub fn config(&self) -> &crate::config::AppConfig {
+        &self.config
     }
 
     pub async fn get_all_entities(&self) -> AppResult<DashboardState> {

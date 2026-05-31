@@ -6,172 +6,301 @@
     <title>{% block title %}HARetroPanel{% endblock %}</title>
 
     <style>
+        :root {
+            color-scheme: dark;
+        }
+
         body {
-            background: #111;
-            color: #f0f0f0;
-            font-family: Arial, sans-serif;
+            background: #0c0f14;
+            color: #eef3ff;
+            font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
             margin: 0;
-            padding: 0.5rem;
+            padding: 0;
             -webkit-text-size-adjust: 100%;
         }
 
         .container {
-            max-width: 1500px;
+            max-width: 1200px;
             margin: 0 auto;
-            padding: 1rem;
+            padding: 20px 24px 40px;
         }
 
-        .toolbar {
-            display: -webkit-box;
-            display: -webkit-flex;
+        .dashboard {
             display: flex;
-            -webkit-flex-wrap: wrap;
-            flex-wrap: wrap;
-            -webkit-box-align: center;
-            -webkit-align-items: center;
-            align-items: center;
-            margin-bottom: 1rem;
+            flex-direction: column;
         }
 
-        .toolbar h1 {
-            font-size: 1.8rem;
-            margin: 0;
+        .dashboard > * + * {
+            margin-top: 20px;
         }
 
-        .toolbar-actions {
-            display: -webkit-box;
-            display: -webkit-flex;
+        .header {
             display: flex;
-            -webkit-box-align: center;
-            -webkit-align-items: center;
             align-items: center;
-            margin-left: auto;
+            justify-content: space-between;
+            gap: 16px;
         }
 
-        .toolbar-actions .toolbar-link + .toolbar-link {
-            margin-left: 0.5rem;
+        .title {
+            font-size: 28px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
         }
 
-        .toolbar-link {
-            color: #4CAF50;
-            font-size: 1.1rem;
+        .subtitle {
+            color: #8d96ab;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .header-actions {
+            display: flex;
+        }
+
+        .header-actions .header-link + .header-link {
+            margin-left: 12px;
+        }
+
+        .header-link {
             text-decoration: none;
-            padding: 0.3rem 0.6rem;
-            border-radius: 8px;
-            background: rgba(40, 40, 40, 0.6);
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-
-        .toolbar-link:active {
-            background: rgba(80, 80, 80, 0.6);
-        }
-
-        .pagination {
-            display: -webkit-box;
-            display: -webkit-flex;
-            display: flex;
-            -webkit-justify-content: center;
-            justify-content: center;
-            -webkit-align-items: center;
-            align-items: center;
-            margin: 1rem 0;
-        }
-
-        .pagination > * {
-            margin: 0 0.5rem;
-        }
-
-        .pager-link {
-            color: #4CAF50;
-            text-decoration: none;
-            border: 1px solid rgba(255,255,255,0.08);
-            padding: 0.3rem 0.8rem;
-            border-radius: 6px;
-            background: rgba(40,40,40,0.6);
-        }
-
-        .pager-disabled {
-            color: #555;
-        }
-
-        .pager-info {
-            color: #ccc;
-            font-size: 1rem;
-        }
-
-        .grid {
-            display: -webkit-box;
-            display: -webkit-flex;
-            display: flex;
-            -webkit-flex-wrap: wrap;
-            flex-wrap: wrap;
-            margin: -0.5rem;
-        }
-
-        .card {
-            background: rgba(30, 30, 30, 0.65);
+            color: #e7f1ff;
+            background: rgba(30, 40, 60, 0.7);
+            padding: 8px 14px;
+            border-radius: 10px;
             border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            padding: 1rem;
-            -webkit-box-flex: 1;
-            -webkit-flex: 1 1 260px;
+            font-size: 14px;
+        }
+
+        .header-link:active {
+            background: rgba(40, 60, 90, 0.9);
+        }
+
+        .demo-banner {
+            background: rgba(250, 200, 70, 0.15);
+            color: #f7d48f;
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(250, 200, 70, 0.35);
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: inline-block;
+            width: fit-content;
+        }
+
+        .panel-row {
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .panel-row > .panel {
+            margin-right: 20px;
+            margin-bottom: 20px;
+        }
+
+        .panel-row > .panel:last-child {
+            margin-right: 0;
+        }
+
+        .panel {
+            background: rgba(18, 24, 35, 0.92);
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 18px 20px 22px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+            flex: 1 1 320px;
+        }
+
+        .panel-title {
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #8ea2c0;
+            margin-bottom: 16px;
+        }
+
+        .solar-diagram {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .solar-diagram > * + * {
+            margin-top: 16px;
+        }
+
+        .solar-ring {
+            position: relative;
+            background: #111826;
+            border-radius: 20px;
+            overflow: hidden;
+            height: 160px;
+            border: 1px solid rgba(120, 180, 255, 0.2);
+        }
+
+        .solar-fill {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, rgba(70, 160, 255, 0.4), rgba(90, 230, 180, 0.9));
+        }
+
+        .solar-center {
+            position: relative;
+            z-index: 2;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .solar-watts {
+            font-size: 36px;
+            font-weight: 600;
+        }
+
+        .solar-max {
+            font-size: 14px;
+            color: #9fb1c9;
+            margin-top: 6px;
+        }
+
+        .solar-scale {
+            display: flex;
+            align-items: center;
+        }
+
+        .solar-scale > * + * {
+            margin-left: 12px;
+        }
+
+        .scale-label {
+            font-size: 12px;
+            color: #9fb1c9;
+            min-width: 34px;
+        }
+
+        .scale-bar {
+            flex: 1 1 auto;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
+            height: 10px;
+            overflow: hidden;
+        }
+
+        .scale-progress {
+            height: 100%;
+            background: linear-gradient(90deg, rgba(70, 160, 255, 0.4), rgba(90, 230, 180, 0.9));
+        }
+
+        .charger-body {
+            display: flex;
+            flex-direction: column;
+            padding: 12px 0 6px;
+        }
+
+        .charger-body > * + * {
+            margin-top: 8px;
+        }
+
+        .charger-reading {
+            font-size: 44px;
+            font-weight: 600;
+        }
+
+        .charger-status {
+            font-size: 18px;
+            color: #c5d6f3;
+        }
+
+        .charger-meta {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #7f8aa5;
+        }
+
+        .garage-panel {
+            padding-top: 20px;
+        }
+
+        .garage-grid {
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .garage-grid > .garage-card {
+            margin-right: 18px;
+            margin-bottom: 18px;
+        }
+
+        .garage-grid > .garage-card:last-child {
+            margin-right: 0;
+        }
+
+        .garage-card {
+            background: rgba(14, 18, 26, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 16px;
             flex: 1 1 260px;
-            margin: 0.5rem;
-
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
-            transition: transform 0.1s ease-out;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
 
-        .card:active {
-            transform: scale(0.97);
+        .garage-name {
+            font-size: 18px;
+            font-weight: 600;
         }
 
-        .card-title {
-            margin-top: 0;
-            font-size: 1.4rem;
-            color: #fff;
+        .garage-state {
+            color: #9fb1c9;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
 
-        .card-meta {
-            color: #aaa;
-            font-size: 0.9rem;
-        }
-
-        .card-value {
-            font-size: 1.15rem;
-        }
-
-        .btn {
-            background: rgba(60, 60, 60, 0.8);
-            border: 1px solid rgba(255,255,255,0.05);
-            padding: 0.4rem 0.8rem;
-            border-radius: 8px;
-            color: white;
-            font-size: 1rem;
+        .garage-btn {
+            border: none;
+            padding: 14px 16px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
             width: 100%;
+            color: #f6f9ff;
+            background: rgba(60, 80, 120, 0.65);
         }
 
-        .btn:active {
-            background: rgba(90, 90, 90, 0.8);
+        .garage-open {
+            background: rgba(235, 112, 112, 0.85);
         }
 
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 1rem;
-            font-size: 0.9rem;
+        .garage-closed {
+            background: rgba(90, 190, 130, 0.85);
         }
 
-        th, td {
-            border: 1px solid rgba(255,255,255,0.08);
-            padding: 0.4rem;
-            text-align: left;
-            color: white;
+        .garage-btn:active {
+            filter: brightness(1.1);
         }
 
-        th {
-            background: rgba(30,30,30,0.85);
+        @media (max-width: 900px) {
+            .container {
+                padding: 16px;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .header-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
         }
     </style>
 </head>

@@ -7,7 +7,7 @@ use crate::{
     application::services::DashboardService,
     config::AppConfig,
     infrastructure::{
-        ha::HaHttpClient,
+        ha::{DemoHaClient, HaHttpClient},
         layout::FsDashboardLayoutRepository,
         web::{build_router, AppState},
     },
@@ -15,10 +15,15 @@ use crate::{
 };
 
 pub async fn run(config: AppConfig) -> AppResult<()> {
-    let ha_client = HaHttpClient::new(config.clone())?;
+    let ha_client: Arc<dyn crate::application::ports::HomeAssistantClient> = if config.demo_mode {
+        DemoHaClient::new(&config)
+    } else {
+        HaHttpClient::new(config.clone())?
+    };
 
-    let layout_repo =
-        Arc::new(FsDashboardLayoutRepository::new("./data/dashboard_layout.json"));
+    let layout_repo = Arc::new(FsDashboardLayoutRepository::new(
+        "./data/dashboard_layout.json",
+    ));
 
     // Build cache configuration from AppConfig (env-driven).
     let cache_config = DashboardCacheConfig {
@@ -29,8 +34,12 @@ pub async fn run(config: AppConfig) -> AppResult<()> {
         climate_ttl_secs: config.dashboard_cache_ttl_climate_secs,
     };
 
-    let dashboard_service =
-        Arc::new(DashboardService::new(ha_client, layout_repo, cache_config));
+    let dashboard_service = Arc::new(DashboardService::new(
+        ha_client,
+        layout_repo,
+        cache_config,
+        config.clone(),
+    ));
 
     let state = AppState { dashboard_service };
 

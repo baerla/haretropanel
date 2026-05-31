@@ -10,7 +10,10 @@ use tracing::info;
 use crate::{
     domain::EntityId,
     infrastructure::web::{
-        viewmodels::{DashboardPageViewModel, DashboardTemplate},
+        viewmodels::{
+            ChargerViewModel, DashboardTemplate, DashboardViewModel, GarageDoorViewModel,
+            SolarViewModel,
+        },
         AppState,
     },
     shared::error::AppResult,
@@ -36,22 +39,111 @@ pub async fn get_dashboard(
     State(state): State<AppState>,
     Query(query): Query<DashboardQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let requested_page = query.page.unwrap_or(1);
+    let _requested_page = query.page.unwrap_or(1);
     let force_refresh = query.force_refresh.is_some();
 
     let dashboard_state = state
         .dashboard_service
         .get_dashboard_with_refresh(force_refresh)
         .await?;
-    let entity_pages = state.dashboard_service.get_entity_pages().await?;
 
-    let vm =
-        DashboardPageViewModel::from_state_and_pages(dashboard_state, &entity_pages, requested_page);
+    let cfg = state.dashboard_service.config();
+
+    let solar_entity = dashboard_state
+        .entities
+        .iter()
+        .find(|e| e.id.0 == cfg.solar_entity_id);
+    let charger_entity = dashboard_state
+        .entities
+        .iter()
+        .find(|e| e.id.0 == cfg.charger_current_entity_id);
+    let garage_left_entity = dashboard_state
+        .entities
+        .iter()
+        .find(|e| e.id.0 == cfg.garage_left_entity_id);
+    let garage_right_entity = dashboard_state
+        .entities
+        .iter()
+        .find(|e| e.id.0 == cfg.garage_right_entity_id);
+
+    let solar_watts = solar_entity
+        .and_then(|e| e.value.clone())
+        .and_then(|v| {
+            v.split_whitespace()
+                .next()
+                .and_then(|n| n.parse::<f64>().ok())
+        })
+        .unwrap_or(0.0);
+
+    let percent = if cfg.solar_max_watts <= 0.0 {
+        0
+    } else {
+        ((solar_watts / cfg.solar_max_watts) * 100.0)
+            .round()
+            .clamp(0.0, 100.0) as u8
+    };
+
+    let max_watts_label = if cfg.solar_max_watts > 0.0 {
+        format!("{:.0} W max", cfg.solar_max_watts)
+    } else {
+        "Max unavailable".to_string()
+    };
+
+    let solar_vm = SolarViewModel {
+        watts_label: format!("{:.0} W", solar_watts),
+        percent,
+        max_watts_label,
+    };
+
+    let charger_value = charger_entity
+        .and_then(|e| e.value.clone())
+        .unwrap_or_else(|| "0 A".to_string());
+    let charger_status = if charger_value.starts_with('0') {
+        "Idle"
+    } else {
+        "Charging"
+    };
+
+    let charger_vm = ChargerViewModel {
+        amps_label: charger_value,
+        status_label: charger_status.to_string(),
+    };
+
+    let make_garage_vm = |entity: Option<&crate::domain::Entity>, default_name: &str| {
+        let id = entity
+            .map(|e| e.id.0.clone())
+            .unwrap_or_else(|| default_name.to_string());
+        let name = entity
+            .map(|e| e.name.clone())
+            .unwrap_or_else(|| default_name.to_string());
+        let is_open = entity.map(|e| e.is_on).unwrap_or(false);
+        let status_label = if is_open { "Open" } else { "Closed" };
+        let action_label = if is_open { "Close" } else { "Open" };
+        let button_class = if is_open {
+            "garage-btn garage-open"
+        } else {
+            "garage-btn garage-closed"
+        };
+
+        GarageDoorViewModel {
+            id,
+            name,
+            status_label: status_label.to_string(),
+            action_label: action_label.to_string(),
+            button_class: button_class.to_string(),
+        }
+    };
+
+    let dashboard_vm = DashboardViewModel {
+        solar: solar_vm,
+        charger: charger_vm,
+        garage_left: make_garage_vm(garage_left_entity, "Garage Left"),
+        garage_right: make_garage_vm(garage_right_entity, "Garage Right"),
+        demo_mode: cfg.demo_mode,
+    };
 
     let template = DashboardTemplate {
-        entities: &vm.entities,
-        current_page: vm.current_page,
-        total_pages: vm.total_pages,
+        dashboard: &dashboard_vm,
     };
 
     let rendered = template.render()?;

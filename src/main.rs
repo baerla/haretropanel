@@ -24,9 +24,7 @@ fn init_tracing(config: &AppConfig) {
 
     let env_filter = EnvFilter::new(&config.log_level);
 
-    let fmt_layer = fmt::layer()
-        .with_writer(non_blocking)
-        .with_ansi(false);
+    let fmt_layer = fmt::layer().with_writer(non_blocking).with_ansi(false);
 
     tracing_subscriber::registry()
         .with(env_filter)

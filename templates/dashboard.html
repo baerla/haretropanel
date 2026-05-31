@@ -1,72 +1,80 @@
 {% extends "base.html" %}
 
-{% block title %}HARetroPanel - Home Assistant panel{% endblock %}
+{% block title %}HARetroPanel - Solar Dashboard{% endblock %}
 
 {% block content %}
-<div class="toolbar">
-    <h1>HARetroPanel - Home Assistant panel</h1>
-    <div class="toolbar-actions">
-        <a href="/?page={{ current_page }}&force_refresh=1" class="toolbar-link">
-            Refresh
-        </a>
-        <a href="/settings/entities" class="toolbar-link">
-            Settings
-        </a>
+<div class="dashboard">
+    <div class="header">
+        <div class="title-block">
+            <div class="title">Home Energy</div>
+            <div class="subtitle">Live overview</div>
+        </div>
+        <div class="header-actions">
+            <a href="/?force_refresh=1" class="header-link">Refresh</a>
+            <a href="/settings/entities" class="header-link">Settings</a>
+        </div>
     </div>
-</div>
 
-<div class="pagination">
-    {% if current_page > 1 %}
-        <a href="/?page={{ current_page - 1 }}" class="pager-link">&laquo; Prev</a>
-    {% else %}
-        <span class="pager-disabled">&laquo; Prev</span>
+    {% if dashboard.demo_mode %}
+    <div class="demo-banner">Demo mode enabled</div>
     {% endif %}
 
-    <span class="pager-info">
-        Page {{ current_page }} / {{ total_pages }}
-    </span>
+    <div class="panel-row">
+        <div class="panel solar-panel">
+            <div class="panel-title">Solar Production</div>
+            <div class="solar-diagram">
+                <div class="solar-ring">
+                    <div class="solar-fill" style="width: {{ dashboard.solar.percent }}%;"></div>
+                    <div class="solar-center">
+                        <div class="solar-watts">{{ dashboard.solar.watts_label }}</div>
+                        <div class="solar-max">{{ dashboard.solar.max_watts_label }}</div>
+                    </div>
+                </div>
+                <div class="solar-scale">
+                    <div class="scale-label">0%</div>
+                    <div class="scale-bar">
+                        <div class="scale-progress" style="width: {{ dashboard.solar.percent }}%;"></div>
+                    </div>
+                    <div class="scale-label">{{ dashboard.solar.percent }}%</div>
+                </div>
+            </div>
+        </div>
 
-    {% if current_page < total_pages %}
-        <a href="/?page={{ current_page + 1 }}" class="pager-link">Next &raquo;</a>
-    {% else %}
-        <span class="pager-disabled">Next &raquo;</span>
-    {% endif %}
-</div>
-
-<div class="grid">
-    {% for entity in entities %}
-    <div class="card">
-        <h2 class="card-title">{{ entity.name }}</h2>
-
-        <p class="card-meta">Type: {{ entity.kind_label }}</p>
-
-        {% if entity.has_value %}
-        <p class="card-value">Value: {{ entity.value }}</p>
-        {% else %}
-        <p class="card-value">
-            Value:
-            {% if entity.is_on %}on{% else %}off{% endif %}
-        </p>
-        {% endif %}
-
-        {% if entity.can_toggle %}
-        <form method="post" action="/toggle" style="margin-top: 0.5rem;">
-            <input type="hidden" name="entity_id" value="{{ entity.id }}">
-            <button type="submit" class="btn">
-                Toggle
-            </button>
-        </form>
-        {% endif %}
-
-        {% if entity.can_run_script %}
-        <form method="post" action="/run_script" style="margin-top: 0.5rem;">
-            <input type="hidden" name="entity_id" value="{{ entity.id }}">
-            <button type="submit" class="btn">
-                Run
-            </button>
-        </form>
-        {% endif %}
+        <div class="panel charger-panel">
+            <div class="panel-title">Go-E Charger</div>
+            <div class="charger-body">
+                <div class="charger-reading">{{ dashboard.charger.amps_label }}</div>
+                <div class="charger-status">{{ dashboard.charger.status_label }}</div>
+                <div class="charger-meta">Ladestrom aktuell</div>
+            </div>
+        </div>
     </div>
-    {% endfor %}
+
+    <div class="panel garage-panel">
+        <div class="panel-title">Garage Doors</div>
+        <div class="garage-grid">
+            <div class="garage-card">
+                <div class="garage-name">{{ dashboard.garage_left.name }}</div>
+                <div class="garage-state">{{ dashboard.garage_left.status_label }}</div>
+                <form method="post" action="/toggle">
+                    <input type="hidden" name="entity_id" value="{{ dashboard.garage_left.id }}">
+                    <button type="submit" class="{{ dashboard.garage_left.button_class }}">
+                        {{ dashboard.garage_left.action_label }}
+                    </button>
+                </form>
+            </div>
+
+            <div class="garage-card">
+                <div class="garage-name">{{ dashboard.garage_right.name }}</div>
+                <div class="garage-state">{{ dashboard.garage_right.status_label }}</div>
+                <form method="post" action="/toggle">
+                    <input type="hidden" name="entity_id" value="{{ dashboard.garage_right.id }}">
+                    <button type="submit" class="{{ dashboard.garage_right.button_class }}">
+                        {{ dashboard.garage_right.action_label }}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}

@@ -2,13 +2,14 @@ use serde::{Deserialize, Serialize};
 
 use super::value_objects::EntityId;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum EntityKind {
     Light,
     Switch,
     Sensor,
     Climate,
     Script,
+    Cover,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

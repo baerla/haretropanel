@@ -58,6 +58,8 @@ impl HaHttpClient {
             EntityKind::Climate
         } else if entity_id.starts_with("script.") {
             EntityKind::Script
+        } else if entity_id.starts_with("cover.") {
+            EntityKind::Cover
         } else {
             EntityKind::Sensor
         }
@@ -69,12 +71,13 @@ impl HaHttpClient {
             EntityKind::Climate => matches!(state, "heat" | "cool" | "heat_cool" | "auto"),
             EntityKind::Sensor => matches!(state, "on" | "open" | "home" | "above_horizon"),
             EntityKind::Script => state == "on",
+            EntityKind::Cover => matches!(state, "open" | "opening"),
         }
     }
 
     fn build_value(kind: &EntityKind, state: &str, ha: &HaStateResponse) -> Option<String> {
         match kind {
-            EntityKind::Sensor | EntityKind::Climate => {
+            EntityKind::Sensor | EntityKind::Climate | EntityKind::Cover => {
                 if let Some(unit) = &ha.attributes.unit_of_measurement {
                     Some(format!("{state} {unit}"))
                 } else {
@@ -162,10 +165,7 @@ impl HomeAssistantClient for HaHttpClient {
             .await
             .map_err(AppError::Http)?;
 
-        let entities = ha_states
-            .into_iter()
-            .map(Self::build_entity)
-            .collect();
+        let entities = ha_states.into_iter().map(Self::build_entity).collect();
 
         Ok(DashboardState { entities })
     }

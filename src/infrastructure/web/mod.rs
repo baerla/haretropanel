@@ -1,7 +1,6 @@
-pub mod routes;
 pub mod handlers;
+pub mod routes;
 pub mod viewmodels;
-
 
 use std::sync::Arc;
 
