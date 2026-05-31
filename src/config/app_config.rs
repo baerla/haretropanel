@@ -1,6 +1,7 @@
 use crate::shared::error::{AppError, AppResult};
 use dotenvy::dotenv;
 use std::env;
+use std::num::NonZeroU64;
 
 #[derive(Clone, Debug)]
 pub struct AppConfig {
@@ -61,37 +62,33 @@ impl AppConfig {
         // ---- Dashboard cache TTL config ----
         // Default TTL in seconds (used when no per-kind override exists)
         let dashboard_cache_ttl_default_secs = env::var("HARETROPANEL_CACHE_TTL_DEFAULT_SECS")
+
             .unwrap_or_else(|_| "5".to_string())
-            .parse()
-            .map_err(|e| {
-                AppError::Config(format!(
-                    "Invalid HARETROPANEL_CACHE_TTL_DEFAULT_SECS: {e}"
-                ))
-            })?;
+            .parse::<u64>()
+            .map_err(|_| AppError::Config("HARETROPANEL_CACHE_TTL_DEFAULT_SECS is not a valid u64".to_string()))?;
 
-        // Helper closure to read optional u64 env vars.
-        fn read_optional_u64(name: &str) -> AppResult<Option<u64>> {
-            match env::var(name) {
-                Ok(raw) => {
-                    let value = raw.parse().map_err(|e| {
-                        AppError::Config(format!("Invalid {name}: {e}"))
-                    })?;
-                    Ok(Some(value))
-                }
-                Err(_) => Ok(None),
-            }
-        }
+        // Per-kind overrides
+        let dashboard_cache_ttl_light_secs = env::var("HARETROPANEL_CACHE_TTL_LIGHT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok().filter(|v| *v > 0).and_then(NonZeroU64::new))
+            .map(|v| v.get());
 
-        let dashboard_cache_ttl_light_secs =
-            read_optional_u64("HARETROPANEL_CACHE_TTL_LIGHT_SECS")?;
-        let dashboard_cache_ttl_switch_secs =
-            read_optional_u64("HARETROPANEL_CACHE_TTL_SWITCH_SECS")?;
-        let dashboard_cache_ttl_sensor_secs =
-            read_optional_u64("HARETROPANEL_CACHE_TTL_SENSOR_SECS")?;
-        let dashboard_cache_ttl_climate_secs =
-            read_optional_u64("HARETROPANEL_CACHE_TTL_CLIMATE_SECS")?;
+        let dashboard_cache_ttl_switch_secs = env::var("HARETROPANEL_CACHE_TTL_SWITCH_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok().filter(|v| *v > 0).and_then(NonZeroU64::new))
+            .map(|v| v.get());
 
-        Ok(Self {
+        let dashboard_cache_ttl_sensor_secs = env::var("HARETROPANEL_CACHE_TTL_SENSOR_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok().filter(|v| *v > 0).and_then(NonZeroU64::new))
+            .map(|v| v.get());
+
+        let dashboard_cache_ttl_climate_secs = env::var("HARETROPANEL_CACHE_TTL_CLIMATE_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok().filter(|v| *v > 0).and_then(NonZeroU64::new))
+            .map(|v| v.get());
+
+        Ok(AppConfig {
             server_port,
             ha_base_url,
             ha_token,
@@ -104,5 +101,157 @@ impl AppConfig {
             dashboard_cache_ttl_sensor_secs,
             dashboard_cache_ttl_climate_secs,
         })
+    }
+}
+
+#[cfg(test)]
+mod app_config_tests {
+    use super::*;
+
+    /// Move .env out of the way and restore it after the test.
+    /// All config tests are in a single function to avoid parallelism issues with .env and env vars.
+    #[test]
+    fn test_all_config_scenarios() {
+        let dotenv_path = ".env";
+        let backup_path = ".env.test_backup";
+        let dotenv_exists = std::path::Path::new(dotenv_path).exists();
+        if dotenv_exists {
+            std::fs::rename(dotenv_path, backup_path).unwrap();
+        }
+
+        // Helper closures that capture base_vars
+        let base_vars = vec![
+            "HARETROPANEL_PORT".to_string(),
+            "HA_BASE_URL".to_string(),
+            "HA_TOKEN".to_string(),
+            "HARETROPANEL_LOG_DIR".to_string(),
+            "HARETROPANEL_LOG_ROTATION".to_string(),
+            "HARETROPANEL_LOG_LEVEL".to_string(),
+            "HARETROPANEL_CACHE_TTL_DEFAULT_SECS".to_string(),
+            "HARETROPANEL_CACHE_TTL_LIGHT_SECS".to_string(),
+            "HARETROPANEL_CACHE_TTL_SWITCH_SECS".to_string(),
+            "HARETROPANEL_CACHE_TTL_SENSOR_SECS".to_string(),
+            "HARETROPANEL_CACHE_TTL_CLIMATE_SECS".to_string(),
+        ];
+        let base_vars_clone = base_vars.clone();
+        let clear_all = move || {
+            for var in &base_vars_clone {
+                env::remove_var(var);
+            }
+        };
+
+        // 1. Minimal required vars + defaults
+        env::set_var("HA_TOKEN", "t");
+        env::set_var("HA_BASE_URL", "https://ha.example.com");
+        let cfg = AppConfig::from_env().unwrap();
+        assert_eq!(cfg.server_port, 8080);
+        assert_eq!(cfg.ha_base_url, "https://ha.example.com");
+        assert_eq!(cfg.ha_token, Some("t".to_string()));
+        assert_eq!(cfg.log_dir, "./logs");
+        assert!(matches!(cfg.log_rotation, LogRotation::Daily));
+        assert_eq!(cfg.log_level, "haretropanel=info,tower_http=info");
+        assert_eq!(cfg.dashboard_cache_ttl_default_secs, 5);
+        assert_eq!(cfg.dashboard_cache_ttl_light_secs, None);
+        assert_eq!(cfg.dashboard_cache_ttl_switch_secs, None);
+        assert_eq!(cfg.dashboard_cache_ttl_sensor_secs, None);
+        assert_eq!(cfg.dashboard_cache_ttl_climate_secs, None);
+        clear_all();
+
+        // 2. Custom port
+        env::set_var("HARETROPANEL_PORT", "9090");
+        let cfg = AppConfig::from_env().unwrap();
+        assert_eq!(cfg.server_port, 9090);
+        clear_all();
+
+        // 3. Invalid port → error
+        env::set_var("HARETROPANEL_PORT", "not_a_number");
+        assert!(AppConfig::from_env().is_err());
+        clear_all();
+
+        // 4. Log rotation variants
+        env::set_var("HARETROPANEL_LOG_ROTATION", "hourly");
+        assert!(matches!(AppConfig::from_env().unwrap().log_rotation, LogRotation::Hourly));
+        clear_all();
+
+        env::set_var("HARETROPANEL_LOG_ROTATION", "never");
+        assert!(matches!(AppConfig::from_env().unwrap().log_rotation, LogRotation::Never));
+        clear_all();
+
+        env::set_var("HARETROPANEL_LOG_ROTATION", "monthly"); // unknown → Daily
+        assert!(matches!(AppConfig::from_env().unwrap().log_rotation, LogRotation::Daily));
+        clear_all();
+
+        env::set_var("HARETROPANEL_LOG_ROTATION", "HOURLY"); // case insensitive
+        assert!(matches!(AppConfig::from_env().unwrap().log_rotation, LogRotation::Hourly));
+        clear_all();
+
+        // 5. Log dir
+        env::set_var("HARETROPANEL_LOG_DIR", "/var/log/haretropanel");
+        assert_eq!(AppConfig::from_env().unwrap().log_dir, "/var/log/haretropanel");
+        clear_all();
+
+        // 6. Log level
+        env::set_var("HARETROPANEL_LOG_LEVEL", "debug");
+        assert_eq!(AppConfig::from_env().unwrap().log_level, "debug");
+        clear_all();
+
+        // 7. Custom cache TTL
+        env::set_var("HARETROPANEL_CACHE_TTL_DEFAULT_SECS", "30");
+        assert_eq!(AppConfig::from_env().unwrap().dashboard_cache_ttl_default_secs, 30);
+        clear_all();
+
+        // 8. Invalid cache TTL → error
+        env::set_var("HARETROPANEL_CACHE_TTL_DEFAULT_SECS", "bad");
+        assert!(AppConfig::from_env().is_err());
+        clear_all();
+
+        // 9. Per-kind cache TTLs
+        env::set_var("HARETROPANEL_CACHE_TTL_LIGHT_SECS", "10");
+        env::set_var("HARETROPANEL_CACHE_TTL_SWITCH_SECS", "15");
+        env::set_var("HARETROPANEL_CACHE_TTL_SENSOR_SECS", "20");
+        env::set_var("HARETROPANEL_CACHE_TTL_CLIMATE_SECS", "25");
+        let cfg = AppConfig::from_env().unwrap();
+        assert_eq!(cfg.dashboard_cache_ttl_light_secs, Some(10));
+        assert_eq!(cfg.dashboard_cache_ttl_switch_secs, Some(15));
+        assert_eq!(cfg.dashboard_cache_ttl_sensor_secs, Some(20));
+        assert_eq!(cfg.dashboard_cache_ttl_climate_secs, Some(25));
+        clear_all();
+
+        // 10. Mixed: some per-kind overrides, some not
+        env::set_var("HARETROPANEL_CACHE_TTL_DEFAULT_SECS", "60");
+        env::set_var("HARETROPANEL_CACHE_TTL_LIGHT_SECS", "5");
+        let cfg = AppConfig::from_env().unwrap();
+        assert_eq!(cfg.dashboard_cache_ttl_default_secs, 60);
+        assert_eq!(cfg.dashboard_cache_ttl_light_secs, Some(5));
+        assert_eq!(cfg.dashboard_cache_ttl_sensor_secs, None);
+        assert_eq!(cfg.dashboard_cache_ttl_climate_secs, None);
+        clear_all();
+
+        // 11. Missing HA_TOKEN is allowed by from_env (returns None)
+        let cfg = AppConfig::from_env().unwrap();
+        assert_eq!(cfg.ha_token, None);
+
+        // 12. LogRotation debug
+        assert!(format!("{:?}", LogRotation::Daily).contains("Daily"));
+        assert!(format!("{:?}", LogRotation::Hourly).contains("Hourly"));
+        assert!(format!("{:?}", LogRotation::Never).contains("Never"));
+
+        // 13. Clone
+        let cfg = AppConfig::from_env().unwrap();
+        let cloned = cfg.clone();
+        assert_eq!(cfg.server_port, cloned.server_port);
+        assert_eq!(cfg.ha_base_url, cloned.ha_base_url);
+
+        // 14. Debug display
+        let debug_str = format!("{cfg:?}");
+        assert!(debug_str.contains("AppConfig"));
+
+        // --- Restore state ---
+        if dotenv_exists {
+            std::fs::rename(backup_path, dotenv_path).unwrap();
+        }
+        for var in &base_vars {
+            env::remove_var(var);
+        }
     }
 }

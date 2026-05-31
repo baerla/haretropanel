@@ -19,6 +19,43 @@ pub struct HaHttpClient {
     client: Client,
 }
 
+pub fn entity_kind_from_id(entity_id: &str) -> EntityKind {
+    if entity_id.starts_with("light.") {
+        EntityKind::Light
+    } else if entity_id.starts_with("switch.") {
+        EntityKind::Switch
+    } else if entity_id.starts_with("climate.") {
+        EntityKind::Climate
+    } else if entity_id.starts_with("script.") {
+        EntityKind::Script
+    } else {
+        EntityKind::Sensor
+    }
+}
+
+pub fn is_on(kind: &EntityKind, state: &str) -> bool {
+    match kind {
+        EntityKind::Light | EntityKind::Switch => state == "on",
+        EntityKind::Climate => matches!(state, "heat" | "cool" | "heat_cool" | "auto"),
+        EntityKind::Sensor => matches!(state, "on" | "open" | "home" | "above_horizon"),
+        EntityKind::Script => state == "on",
+    }
+}
+
+pub fn build_value(kind: &EntityKind, state: &str, ha: &HaStateResponse) -> Option<String> {
+    match kind {
+        EntityKind::Sensor | EntityKind::Climate => {
+            if let Some(unit) = &ha.attributes.unit_of_measurement {
+                Some(format!("{state} {unit}"))
+            } else {
+                Some(state.to_string())
+            }
+        }
+        EntityKind::Script => Some(state.to_string()),
+        EntityKind::Light | EntityKind::Switch => None,
+    }
+}
+
 impl HaHttpClient {
     pub fn new(config: AppConfig) -> AppResult<Arc<Self>> {
         let client = Self::build_client(&config)?;
@@ -49,45 +86,8 @@ impl HaHttpClient {
             .map_err(|e| AppError::Internal(format!("Invalid HA_BASE_URL: {e}")))
     }
 
-    fn map_entity_kind(entity_id: &str) -> EntityKind {
-        if entity_id.starts_with("light.") {
-            EntityKind::Light
-        } else if entity_id.starts_with("switch.") {
-            EntityKind::Switch
-        } else if entity_id.starts_with("climate.") {
-            EntityKind::Climate
-        } else if entity_id.starts_with("script.") {
-            EntityKind::Script
-        } else {
-            EntityKind::Sensor
-        }
-    }
-
-    fn is_on_state(kind: &EntityKind, state: &str) -> bool {
-        match kind {
-            EntityKind::Light | EntityKind::Switch => state == "on",
-            EntityKind::Climate => matches!(state, "heat" | "cool" | "heat_cool" | "auto"),
-            EntityKind::Sensor => matches!(state, "on" | "open" | "home" | "above_horizon"),
-            EntityKind::Script => state == "on",
-        }
-    }
-
-    fn build_value(kind: &EntityKind, state: &str, ha: &HaStateResponse) -> Option<String> {
-        match kind {
-            EntityKind::Sensor | EntityKind::Climate => {
-                if let Some(unit) = &ha.attributes.unit_of_measurement {
-                    Some(format!("{state} {unit}"))
-                } else {
-                    Some(state.to_string())
-                }
-            }
-            EntityKind::Script => Some(state.to_string()),
-            EntityKind::Light | EntityKind::Switch => None,
-        }
-    }
-
     fn build_entity(ha: HaStateResponse) -> Entity {
-        let kind = Self::map_entity_kind(&ha.entity_id);
+        let kind = entity_kind_from_id(&ha.entity_id);
 
         let name = ha
             .attributes
@@ -95,8 +95,8 @@ impl HaHttpClient {
             .clone()
             .unwrap_or_else(|| ha.entity_id.clone());
 
-        let is_on = Self::is_on_state(&kind, &ha.state);
-        let value = Self::build_value(&kind, &ha.state, &ha);
+        let is_on = is_on(&kind, &ha.state);
+        let value = build_value(&kind, &ha.state, &ha);
 
         Entity {
             id: EntityId(ha.entity_id),
@@ -195,5 +195,179 @@ impl HomeAssistantClient for HaHttpClient {
         let body = serde_json::json!({ "entity_id": id_str });
 
         self.call_service("script", "turn_on", body).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_entity_kind_from_id_light() {
+        assert_eq!(entity_kind_from_id("light.lamp"), EntityKind::Light);
+    }
+
+    #[test]
+    fn test_entity_kind_from_id_switch() {
+        assert_eq!(entity_kind_from_id("switch.outdoor"), EntityKind::Switch);
+    }
+
+    #[test]
+    fn test_entity_kind_from_id_climate() {
+        assert_eq!(entity_kind_from_id("climate.home"), EntityKind::Climate);
+    }
+
+    #[test]
+    fn test_entity_kind_from_id_script() {
+        assert_eq!(entity_kind_from_id("script.away_mode"), EntityKind::Script);
+    }
+
+    #[test]
+    fn test_entity_kind_from_id_sensor_fallback() {
+        assert_eq!(entity_kind_from_id("binary_sensor.motion"), EntityKind::Sensor);
+        assert_eq!(entity_kind_from_id("zone.home"), EntityKind::Sensor);
+        assert_eq!(entity_kind_from_id("unknown.domain"), EntityKind::Sensor);
+    }
+
+    #[test]
+    fn test_is_on_light_on() {
+        assert!(is_on(&EntityKind::Light, "on"));
+    }
+
+    #[test]
+    fn test_is_on_light_off() {
+        assert!(!is_on(&EntityKind::Light, "off"));
+    }
+
+    #[test]
+    fn test_is_on_switch_on() {
+        assert!(is_on(&EntityKind::Switch, "on"));
+    }
+
+    #[test]
+    fn test_is_on_switch_off() {
+        assert!(!is_on(&EntityKind::Switch, "off"));
+    }
+
+    #[test]
+    fn test_is_on_climate_heat() {
+        assert!(is_on(&EntityKind::Climate, "heat"));
+        assert!(is_on(&EntityKind::Climate, "cool"));
+        assert!(is_on(&EntityKind::Climate, "heat_cool"));
+        assert!(is_on(&EntityKind::Climate, "auto"));
+    }
+
+    #[test]
+    fn test_is_on_climate_not_on() {
+        assert!(!is_on(&EntityKind::Climate, "off"));
+        assert!(!is_on(&EntityKind::Climate, "idle"));
+    }
+
+    #[test]
+    fn test_is_on_sensor_on() {
+        assert!(is_on(&EntityKind::Sensor, "on"));
+        assert!(is_on(&EntityKind::Sensor, "open"));
+        assert!(is_on(&EntityKind::Sensor, "home"));
+        assert!(is_on(&EntityKind::Sensor, "above_horizon"));
+    }
+
+    #[test]
+    fn test_is_on_sensor_off() {
+        assert!(!is_on(&EntityKind::Sensor, "off"));
+        assert!(!is_on(&EntityKind::Sensor, "closed"));
+        assert!(!is_on(&EntityKind::Sensor, "not_home"));
+        assert!(!is_on(&EntityKind::Sensor, "below_horizon"));
+    }
+
+    #[test]
+    fn test_is_on_script_on() {
+        assert!(is_on(&EntityKind::Script, "on"));
+    }
+
+    #[test]
+    fn test_is_on_script_off() {
+        assert!(!is_on(&EntityKind::Script, "off"));
+    }
+
+    #[test]
+    fn test_build_value_sensor_no_unit() {
+        let ha = HaStateResponse {
+            entity_id: "sensor.temp".to_string(),
+            state: "22".to_string(),
+            attributes: crate::infrastructure::ha::ha_models::HaAttributes {
+                friendly_name: None,
+                unit_of_measurement: None,
+            },
+        };
+        let val = build_value(&EntityKind::Sensor, "22", &ha);
+        assert_eq!(val, Some("22".to_string()));
+    }
+
+    #[test]
+    fn test_build_value_sensor_with_unit() {
+        let ha = HaStateResponse {
+            entity_id: "sensor.temp".to_string(),
+            state: "22".to_string(),
+            attributes: crate::infrastructure::ha::ha_models::HaAttributes {
+                friendly_name: None,
+                unit_of_measurement: Some("°C".to_string()),
+            },
+        };
+        let val = build_value(&EntityKind::Sensor, "22", &ha);
+        assert_eq!(val, Some("22 °C".to_string()));
+    }
+
+    #[test]
+    fn test_build_value_climate_with_unit() {
+        let ha = HaStateResponse {
+            entity_id: "climate.home".to_string(),
+            state: "24".to_string(),
+            attributes: crate::infrastructure::ha::ha_models::HaAttributes {
+                friendly_name: None,
+                unit_of_measurement: Some("°F".to_string()),
+            },
+        };
+        let val = build_value(&EntityKind::Climate, "24", &ha);
+        assert_eq!(val, Some("24 °F".to_string()));
+    }
+
+    #[test]
+    fn test_build_value_script() {
+        let ha = HaStateResponse {
+            entity_id: "script.away".to_string(),
+            state: "on".to_string(),
+            attributes: crate::infrastructure::ha::ha_models::HaAttributes {
+                friendly_name: None,
+                unit_of_measurement: None,
+            },
+        };
+        let val = build_value(&EntityKind::Script, "on", &ha);
+        assert_eq!(val, Some("on".to_string()));
+    }
+
+    #[test]
+    fn test_build_value_light_is_none() {
+        let ha = HaStateResponse {
+            entity_id: "light.lamp".to_string(),
+            state: "on".to_string(),
+            attributes: crate::infrastructure::ha::ha_models::HaAttributes {
+                friendly_name: None,
+                unit_of_measurement: None,
+            },
+        };
+        assert!(build_value(&EntityKind::Light, "on", &ha).is_none());
+    }
+
+    #[test]
+    fn test_build_value_switch_is_none() {
+        let ha = HaStateResponse {
+            entity_id: "switch.outdoor".to_string(),
+            state: "on".to_string(),
+            attributes: crate::infrastructure::ha::ha_models::HaAttributes {
+                friendly_name: None,
+                unit_of_measurement: None,
+            },
+        };
+        assert!(build_value(&EntityKind::Switch, "on", &ha).is_none());
     }
 }
