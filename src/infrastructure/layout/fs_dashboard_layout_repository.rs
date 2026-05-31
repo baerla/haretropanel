@@ -129,3 +129,124 @@ impl DashboardLayoutRepository for FsDashboardLayoutRepository {
         self.save_raw(&layout).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use serde_json::Value;
+    use tempfile::tempdir;
+    use tokio::fs;
+
+    use super::FsDashboardLayoutRepository;
+    use crate::application::DashboardLayoutRepository;
+    use crate::domain::EntityId;
+
+    #[tokio::test]
+    async fn load_visible_entities_returns_empty_when_missing() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("layout.json");
+        let repo = FsDashboardLayoutRepository::new(&path);
+
+        let visible = repo.load_visible_entities().await.unwrap();
+        let pages = repo.load_entity_pages().await.unwrap();
+
+        assert!(visible.is_empty());
+        assert!(pages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn load_visible_entities_from_new_format() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("layout.json");
+        let repo = FsDashboardLayoutRepository::new(&path);
+
+        let json = r#"{
+            "visible": ["light.kitchen", "switch.fan"],
+            "entity_pages": { "light.kitchen": 2 }
+        }"#;
+        fs::write(&path, json).await.unwrap();
+
+        let visible = repo.load_visible_entities().await.unwrap();
+        let pages = repo.load_entity_pages().await.unwrap();
+
+        assert_eq!(
+            visible,
+            vec![
+                EntityId("light.kitchen".to_string()),
+                EntityId("switch.fan".to_string())
+            ]
+        );
+        assert_eq!(pages.get("light.kitchen"), Some(&2));
+    }
+
+    #[tokio::test]
+    async fn load_visible_entities_from_legacy_array() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("layout.json");
+        let repo = FsDashboardLayoutRepository::new(&path);
+
+        let json = r#"["light.kitchen", "switch.fan"]"#;
+        fs::write(&path, json).await.unwrap();
+
+        let visible = repo.load_visible_entities().await.unwrap();
+        let pages = repo.load_entity_pages().await.unwrap();
+
+        assert_eq!(
+            visible,
+            vec![
+                EntityId("light.kitchen".to_string()),
+                EntityId("switch.fan".to_string())
+            ]
+        );
+        assert!(pages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn load_visible_entities_rejects_invalid_json() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("layout.json");
+        let repo = FsDashboardLayoutRepository::new(&path);
+
+        fs::write(&path, "not json").await.unwrap();
+
+        let result = repo.load_visible_entities().await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn save_visible_entities_persists() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("layout.json");
+        let repo = FsDashboardLayoutRepository::new(&path);
+
+        repo.save_visible_entities(vec![EntityId("light.kitchen".to_string())])
+            .await
+            .unwrap();
+
+        let visible = repo.load_visible_entities().await.unwrap();
+
+        assert_eq!(visible, vec![EntityId("light.kitchen".to_string())]);
+    }
+
+    #[tokio::test]
+    async fn save_entity_pages_clamps_to_one() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("layout.json");
+        let repo = FsDashboardLayoutRepository::new(&path);
+
+        let mut pages = HashMap::new();
+        pages.insert("light.kitchen".to_string(), 0);
+        pages.insert("switch.fan".to_string(), 3);
+
+        repo.save_entity_pages(pages).await.unwrap();
+
+        let data = fs::read_to_string(&path).await.unwrap();
+        let parsed: Value = serde_json::from_str(&data).unwrap();
+        let entity_pages = parsed.get("entity_pages").unwrap();
+
+        assert_eq!(entity_pages.get("light.kitchen").unwrap().as_u64(), Some(1));
+        assert_eq!(entity_pages.get("switch.fan").unwrap().as_u64(), Some(3));
+    }
+}

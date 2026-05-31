@@ -201,6 +201,7 @@ impl HomeAssistantClient for HaHttpClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{AppConfig, LogRotation};
 
     #[test]
     fn test_entity_kind_from_id_light() {
@@ -369,5 +370,106 @@ mod tests {
             },
         };
         assert!(build_value(&EntityKind::Switch, "on", &ha).is_none());
+    }
+
+    fn base_config() -> AppConfig {
+        AppConfig {
+            server_port: 8080,
+            ha_base_url: "http://localhost:8123".to_string(),
+            ha_token: Some("token".to_string()),
+            log_dir: "./logs".to_string(),
+            log_rotation: LogRotation::Daily,
+            log_level: "info".to_string(),
+            dashboard_cache_ttl_default_secs: 5,
+            dashboard_cache_ttl_light_secs: None,
+            dashboard_cache_ttl_switch_secs: None,
+            dashboard_cache_ttl_sensor_secs: None,
+            dashboard_cache_ttl_climate_secs: None,
+        }
+    }
+
+    #[test]
+    fn test_build_entity_prefers_friendly_name() {
+        let ha = HaStateResponse {
+            entity_id: "light.lamp".to_string(),
+            state: "on".to_string(),
+            attributes: crate::infrastructure::ha::ha_models::HaAttributes {
+                friendly_name: Some("Living Room".to_string()),
+                unit_of_measurement: None,
+            },
+        };
+
+        let entity = HaHttpClient::build_entity(ha);
+
+        assert_eq!(entity.name, "Living Room");
+        assert_eq!(entity.kind, EntityKind::Light);
+        assert!(entity.is_on);
+        assert!(entity.value.is_none());
+    }
+
+    #[test]
+    fn test_build_entity_fallbacks_to_entity_id() {
+        let ha = HaStateResponse {
+            entity_id: "sensor.temp".to_string(),
+            state: "21".to_string(),
+            attributes: crate::infrastructure::ha::ha_models::HaAttributes {
+                friendly_name: None,
+                unit_of_measurement: Some("°C".to_string()),
+            },
+        };
+
+        let entity = HaHttpClient::build_entity(ha);
+
+        assert_eq!(entity.name, "sensor.temp");
+        assert_eq!(entity.kind, EntityKind::Sensor);
+        assert_eq!(entity.value, Some("21 °C".to_string()));
+    }
+
+    #[test]
+    fn test_build_client_requires_token() {
+        let mut config = base_config();
+        config.ha_token = None;
+
+        let result = HaHttpClient::build_client(&config);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_build_client_rejects_invalid_token() {
+        let mut config = base_config();
+        config.ha_token = Some("bad\ntoken".to_string());
+
+        let result = HaHttpClient::build_client(&config);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_base_url_rejects_invalid_url() {
+        let mut config = base_config();
+        config.ha_base_url = "not a url".to_string();
+        let client = HaHttpClient {
+            config,
+            client: Client::new(),
+        };
+
+        let result = client.base_url();
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_run_script_rejects_non_script() {
+        let client = HaHttpClient {
+            config: base_config(),
+            client: Client::new(),
+        };
+
+        let result = client
+            .run_script(&EntityId("light.lamp".to_string()))
+            .await;
+
+        assert!(result.is_err());
     }
 }
