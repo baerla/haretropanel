@@ -63,6 +63,7 @@ pub struct ChargerViewModel {
     pub amps_label: String,
     pub status_label: String,
     pub car_state_label: String,
+    pub car_state_class: String,
 }
 
 pub struct GarageDoorViewModel {

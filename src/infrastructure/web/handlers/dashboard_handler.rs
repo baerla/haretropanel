@@ -61,10 +61,6 @@ pub async fn get_dashboard(
         .entities
         .iter()
         .find(|e| e.id.0 == cfg.goe_status_entity_id);
-    let goe_energy_entity = dashboard_state
-        .entities
-        .iter()
-        .find(|e| e.id.0 == cfg.goe_energy_entity_id);
     let goe_car_entity = dashboard_state
         .entities
         .iter()
@@ -138,35 +134,40 @@ pub async fn get_dashboard(
         .and_then(|e| e.value.clone())
         .unwrap_or_else(|| "Unknown".to_string());
 
-    let goe_energy = goe_energy_entity
-        .and_then(|e| e.value.clone())
-        .and_then(|v| v.split_whitespace().next().map(|s| s.to_string()))
-        .unwrap_or_else(|| "0".to_string());
-
-    let goe_energy_value = goe_energy.parse::<f64>().unwrap_or(0.0);
-
     let mut car_connected = false;
     if let Some(e) = goe_car_entity {
         car_connected = e.is_on || e.value.as_deref() == Some("on");
     }
 
-    let mut car_state_label = "Car not present".to_string();
-    if car_connected {
-        car_state_label = "Charging".to_string();
-    }
+    let goe_status_lower = goe_status.to_lowercase();
+    let status_indicates_absent = goe_status_lower.contains("nicht")
+        || goe_status_lower.contains("stopp")
+        || goe_status_lower.contains("stop")
+        || goe_status_lower.contains("offline")
+        || goe_status_lower.contains("keine");
+    let status_indicates_finished = goe_status_lower.contains("fertig")
+        || goe_status_lower.contains("abgeschlossen")
+        || goe_status_lower.contains("voll")
+        || goe_status_lower.contains("finished");
+    let energy_stable = state.dashboard_service.is_goe_energy_stable().await;
+    let car_present = car_connected || !status_indicates_absent;
 
-    if goe_status.to_lowercase().contains("nicht") || goe_status.to_lowercase().contains("stopp") {
-        car_state_label = "Car not present".to_string();
-    }
-
-    if goe_status.to_lowercase().contains("fertig") || goe_status.to_lowercase().contains("abgeschlossen") {
-        car_state_label = "Car full".to_string();
-    }
+    let car_state_label = if car_present && (energy_stable || status_indicates_finished) {
+        "Car full"
+    } else {
+        "Car not present"
+    };
+    let car_state_class = if car_state_label == "Car full" {
+        "is-full"
+    } else {
+        "is-empty"
+    };
 
     let charger_vm = ChargerViewModel {
         amps_label: charger_value,
         status_label: goe_status,
-        car_state_label,
+        car_state_label: car_state_label.to_string(),
+        car_state_class: car_state_class.to_string(),
     };
 
     let make_garage_vm = |entity: Option<&crate::domain::Entity>, default_name: &str| {

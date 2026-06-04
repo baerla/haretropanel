@@ -4,98 +4,119 @@
 
 {% block content %}
 <div class="dashboard">
-    <div class="header">
+    <header class="header">
         <div class="title-block">
-            <div class="title">Home Energy</div>
-            <div class="subtitle">Live overview</div>
+            <div class="title">Solar Dashboard</div>
+            <div class="subtitle">Live production & charging status</div>
         </div>
         <div class="header-actions">
             <a href="/?force_refresh=1" class="header-link">Refresh</a>
             <a href="/settings/entities" class="header-link">Settings</a>
         </div>
-    </div>
+    </header>
 
     {% if dashboard.demo_mode %}
     <div class="demo-banner">Demo mode enabled</div>
     {% endif %}
 
-    <div class="panel-row">
-        <div class="panel solar-panel">
-            <div class="panel-title">Solar Production</div>
-            <div class="solar-diagram">
-                <div class="solar-ring">
-                    <canvas id="solarChart" class="solar-canvas"></canvas>
-                    <div class="solar-center">
-                        <div class="solar-watts">{{ dashboard.solar.watts_label }}</div>
-                        <div class="solar-max">{{ dashboard.solar.max_watts_label }}</div>
-                    </div>
-                </div>
-                <div class="solar-scale">
-                    <div class="scale-label">0%</div>
-                    <div class="scale-bar">
-                        <div class="scale-progress" style="width: {{ dashboard.solar.percent }}%;"></div>
-                    </div>
-                    <div class="scale-label">{{ dashboard.solar.percent }}%</div>
-                </div>
-                <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js"></script>
-                <script>
-                    (function () {
-                        var ctx = document.getElementById('solarChart');
-                        if (!ctx || !window.Chart) {
-                            return;
-                        }
-                        var labels = {{ dashboard.solar.chart_labels_js | safe }};
-                        var values = {{ dashboard.solar.chart_values_js | safe }};
-                        new Chart(ctx, {
-                            type: 'line',
-                            data: {
-                                labels: labels,
-                                datasets: [{
-                                    data: values,
-                                    borderColor: 'rgba(90, 230, 180, 0.9)',
-                                    backgroundColor: 'rgba(70, 160, 255, 0.18)',
-                                    borderWidth: 2,
-                                    pointRadius: 0,
-                                    lineTension: 0.2
-                                }]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                animation: { duration: 0 },
-                                legend: { display: false },
-                                tooltips: { enabled: false },
-                                scales: {
-                                    xAxes: [{
-                                        display: false,
-                                        gridLines: { display: false }
-                                    }],
-                                    yAxes: [{
-                                        display: false,
-                                        gridLines: { display: false },
-                                        ticks: { beginAtZero: true }
-                                    }]
-                                }
-                            }
-                        });
-                    })();
-                </script>
+    <div class="grid">
+        <section class="panel panel-wide solar-panel">
+            <div class="panel-header">
+                <div class="panel-title">Solar Generation</div>
+                <div class="panel-meta">{{ dashboard.solar.max_watts_label }}</div>
             </div>
-        </div>
+            <div class="solar-hero">
+                <div class="solar-stats">
+                    <div class="stat">
+                        <div class="stat-label">Current output</div>
+                        <div class="stat-value">{{ dashboard.solar.watts_label }}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Utilization</div>
+                        <div class="stat-value">{{ dashboard.solar.percent }}%</div>
+                        <div class="stat-bar">
+                            <div class="stat-progress" style="width: {{ dashboard.solar.percent }}%;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="solar-chart">
+                    <canvas id="solarChart"></canvas>
+                </div>
+            </div>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js"></script>
+            <script>
+                (function () {
+                    var ctx = document.getElementById('solarChart');
+                    if (!ctx || !window.Chart) {
+                        return;
+                    }
+                    var labels = {{ dashboard.solar.chart_labels_js | safe }};
+                    var values = {{ dashboard.solar.chart_values_js | safe }};
+                    var gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 260);
+                    gradient.addColorStop(0, 'rgba(100, 225, 255, 0.35)');
+                    gradient.addColorStop(1, 'rgba(100, 225, 255, 0.04)');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                data: values,
+                                borderColor: 'rgba(110, 255, 204, 0.95)',
+                                backgroundColor: gradient,
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                lineTension: 0.2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: { duration: 0 },
+                            legend: { display: false },
+                            tooltips: {
+                                intersect: false,
+                                mode: 'index',
+                                displayColors: false,
+                                callbacks: {
+                                    label: function(tooltipItem) {
+                                        return tooltipItem.yLabel + ' W';
+                                    }
+                                }
+                            },
+                            scales: {
+                                xAxes: [{
+                                    gridLines: { color: 'rgba(255,255,255,0.05)' },
+                                    ticks: { fontColor: '#8d96ab' }
+                                }],
+                                yAxes: [{
+                                    gridLines: { color: 'rgba(255,255,255,0.05)' },
+                                    ticks: { beginAtZero: true, fontColor: '#8d96ab' }
+                                }]
+                            }
+                        }
+                    });
+                })();
+            </script>
+        </section>
 
-        <div class="panel charger-panel">
-            <div class="panel-title">Go-E Charger</div>
+        <section class="panel charger-panel">
+            <div class="panel-header">
+                <div class="panel-title">Go-E Charger</div>
+                <div class="panel-meta">Status</div>
+            </div>
             <div class="charger-body">
                 <div class="charger-reading">{{ dashboard.charger.amps_label }}</div>
                 <div class="charger-status">{{ dashboard.charger.status_label }}</div>
-                <div class="charger-car-state">{{ dashboard.charger.car_state_label }}</div>
+                <div class="charger-car-state {{ dashboard.charger.car_state_class }}">{{ dashboard.charger.car_state_label }}</div>
                 <div class="charger-meta">Ladestrom aktuell</div>
             </div>
-        </div>
+        </section>
     </div>
 
-    <div class="panel garage-panel">
-        <div class="panel-title">Garage Doors</div>
+    <section class="panel garage-panel">
+        <div class="panel-header">
+            <div class="panel-title">Garage Doors</div>
+        </div>
         <div class="garage-grid">
             <div class="garage-card">
                 <div class="garage-name">{{ dashboard.garage_left.name }}</div>
@@ -119,6 +140,6 @@
                 </form>
             </div>
         </div>
-    </div>
+    </section>
 </div>
 {% endblock %}

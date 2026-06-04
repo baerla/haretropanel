@@ -8,11 +8,21 @@
     <style>
         :root {
             color-scheme: dark;
+            --bg: #0b0f17;
+            --panel: rgba(16, 21, 31, 0.92);
+            --panel-border: rgba(255, 255, 255, 0.06);
+            --text: #eef3ff;
+            --muted: #8d96ab;
+            --accent: #64e1ff;
+            --accent-strong: #6fffcf;
+            --success: #5ebe82;
+            --danger: #eb7070;
         }
 
         body {
-            background: #0c0f14;
-            color: #eef3ff;
+            background: radial-gradient(circle at top, rgba(38, 66, 96, 0.35), transparent 55%),
+                var(--bg);
+            color: var(--text);
             font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
             margin: 0;
             padding: 0;
@@ -28,10 +38,7 @@
         .dashboard {
             display: flex;
             flex-direction: column;
-        }
-
-        .dashboard > * + * {
-            margin-top: 20px;
+            gap: 20px;
         }
 
         .header {
@@ -88,112 +95,95 @@
             width: fit-content;
         }
 
-        .panel-row {
-            display: flex;
-            flex-wrap: wrap;
-        }
-
-        .panel-row > .panel {
-            margin-right: 20px;
-            margin-bottom: 20px;
-        }
-
-        .panel-row > .panel:last-child {
-            margin-right: 0;
+        .grid {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
         }
 
         .panel {
-            background: rgba(18, 24, 35, 0.92);
-            border-radius: 18px;
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            padding: 18px 20px 22px;
+            background: var(--panel);
+            border-radius: 20px;
+            border: 1px solid var(--panel-border);
+            padding: 20px 22px 24px;
             box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
-            flex: 1 1 320px;
         }
 
         .panel-title {
-            font-size: 16px;
+            font-size: 14px;
             text-transform: uppercase;
             letter-spacing: 1px;
-            color: #8ea2c0;
+            color: #9bb0d3;
+        }
+
+        .panel-meta {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 16px;
         }
 
-        .solar-diagram {
-            display: flex;
-            flex-direction: column;
+        .panel-wide {
+            grid-column: span 2;
         }
 
-        .solar-diagram > * + * {
-            margin-top: 16px;
-        }
-
-        .solar-ring {
-            position: relative;
-            background: #111826;
-            border-radius: 20px;
-            overflow: hidden;
-            height: 180px;
-            border: 1px solid rgba(120, 180, 255, 0.2);
-        }
-
-        .solar-canvas {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-        }
-
-        .solar-center {
-            position: relative;
-            z-index: 2;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
+        .solar-hero {
+            display: grid;
+            grid-template-columns: minmax(220px, 1fr) minmax(280px, 2fr);
+            gap: 20px;
             align-items: center;
-            justify-content: center;
-            text-align: center;
-            pointer-events: none;
         }
 
-        .solar-watts {
-            font-size: 36px;
+        .solar-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+            color: var(--muted);
+        }
+
+        .stat-value {
+            font-size: 28px;
             font-weight: 600;
-        }
-
-        .solar-max {
-            font-size: 14px;
-            color: #9fb1c9;
             margin-top: 6px;
         }
 
-        .solar-scale {
-            display: flex;
-            align-items: center;
-        }
-
-        .solar-scale > * + * {
-            margin-left: 12px;
-        }
-
-        .scale-label {
-            font-size: 12px;
-            color: #9fb1c9;
-            min-width: 34px;
-        }
-
-        .scale-bar {
-            flex: 1 1 auto;
-            background: rgba(255, 255, 255, 0.08);
-            border-radius: 999px;
+        .stat-bar {
+            width: 100%;
             height: 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
             overflow: hidden;
+            margin-top: 10px;
         }
 
-        .scale-progress {
+        .stat-progress {
             height: 100%;
-            background: linear-gradient(90deg, rgba(70, 160, 255, 0.4), rgba(90, 230, 180, 0.9));
+            background: linear-gradient(90deg, rgba(70, 160, 255, 0.4), rgba(110, 255, 204, 0.9));
+        }
+
+        .solar-chart {
+            position: relative;
+            height: 260px;
+            background: rgba(15, 20, 30, 0.6);
+            border-radius: 18px;
+            border: 1px solid rgba(100, 180, 255, 0.15);
+            padding: 10px 12px;
+        }
+
+        .solar-chart canvas {
+            width: 100% !important;
+            height: 100% !important;
         }
 
         .charger-body {
@@ -207,7 +197,7 @@
         }
 
         .charger-reading {
-            font-size: 44px;
+            font-size: 40px;
             font-weight: 600;
         }
 
@@ -217,8 +207,22 @@
         }
 
         .charger-car-state {
-            font-size: 14px;
-            color: #9fb1c9;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-radius: 999px;
+            padding: 6px 12px;
+            width: fit-content;
+        }
+
+        .charger-car-state.is-full {
+            color: #02130a;
+            background: rgba(110, 255, 204, 0.85);
+        }
+
+        .charger-car-state.is-empty {
+            color: #d0d6e6;
+            background: rgba(80, 90, 120, 0.5);
         }
 
         .charger-meta {
@@ -228,22 +232,10 @@
             color: #7f8aa5;
         }
 
-        .garage-panel {
-            padding-top: 20px;
-        }
-
         .garage-grid {
-            display: flex;
-            flex-wrap: wrap;
-        }
-
-        .garage-grid > .garage-card {
-            margin-right: 18px;
-            margin-bottom: 18px;
-        }
-
-        .garage-grid > .garage-card:last-child {
-            margin-right: 0;
+            display: grid;
+            gap: 16px;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
         }
 
         .garage-card {
@@ -251,7 +243,6 @@
             border: 1px solid rgba(255, 255, 255, 0.05);
             border-radius: 16px;
             padding: 16px;
-            flex: 1 1 260px;
             display: flex;
             flex-direction: column;
             gap: 10px;
@@ -293,6 +284,55 @@
             filter: brightness(1.1);
         }
 
+        h1 {
+            font-size: 26px;
+            margin-bottom: 12px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+            background: rgba(14, 18, 26, 0.95);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        th,
+        td {
+            padding: 12px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            text-align: left;
+            font-size: 13px;
+        }
+
+        th {
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--muted);
+        }
+
+        input[type="number"],
+        input[type="checkbox"] {
+            accent-color: var(--accent);
+        }
+
+        button,
+        input[type="submit"] {
+            background: rgba(90, 190, 130, 0.85);
+            color: #0b0f17;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        button:active,
+        input[type="submit"]:active {
+            filter: brightness(1.05);
+        }
+
         @media (max-width: 900px) {
             .container {
                 padding: 16px;
@@ -306,6 +346,14 @@
             .header-actions {
                 width: 100%;
                 justify-content: flex-start;
+            }
+
+            .panel-wide {
+                grid-column: span 1;
+            }
+
+            .solar-hero {
+                grid-template-columns: 1fr;
             }
         }
     </style>

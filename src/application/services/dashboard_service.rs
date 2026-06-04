@@ -43,12 +43,19 @@ struct SolarSample {
     watts: f64,
 }
 
+#[derive(Clone, Debug)]
+struct GoeEnergyTracker {
+    last_value: Option<f64>,
+    last_change: Option<Instant>,
+}
+
 pub struct DashboardService {
     ha_client: Arc<dyn HomeAssistantClient>,
     layout_repo: Arc<dyn DashboardLayoutRepository>,
     cache_config: DashboardCacheConfig,
     state_cache: RwLock<Option<CachedDashboardState>>,
     solar_history: RwLock<VecDeque<SolarSample>>,
+    goe_energy_tracker: RwLock<GoeEnergyTracker>,
     config: crate::config::AppConfig,
 }
 
@@ -65,6 +72,10 @@ impl DashboardService {
             cache_config,
             state_cache: RwLock::new(None),
             solar_history: RwLock::new(VecDeque::new()),
+            goe_energy_tracker: RwLock::new(GoeEnergyTracker {
+                last_value: None,
+                last_change: None,
+            }),
             config,
         }
     }
@@ -145,6 +156,33 @@ impl DashboardService {
             }
         }
 
+        if let Some(goe_energy) = fresh
+            .entities
+            .iter()
+            .find(|e| e.id.0 == self.config.goe_energy_entity_id)
+        {
+            if let Some(value) = &goe_energy.value {
+                let parsed = value
+                    .split_whitespace()
+                    .next()
+                    .map(|raw| raw.replace(',', "."))
+                    .and_then(|n| n.parse::<f64>().ok());
+
+                if let Some(kwh) = parsed {
+                    let mut tracker = self.goe_energy_tracker.write().await;
+                    let delta = tracker
+                        .last_value
+                        .map(|prev| (kwh - prev).abs())
+                        .unwrap_or(self.config.goe_energy_delta_kwh + 1.0);
+
+                    if delta >= self.config.goe_energy_delta_kwh || tracker.last_change.is_none() {
+                        tracker.last_change = Some(now);
+                    }
+                    tracker.last_value = Some(kwh);
+                }
+            }
+        }
+
         {
             let mut cache = self.state_cache.write().await;
             *cache = Some(CachedDashboardState {
@@ -176,6 +214,15 @@ impl DashboardService {
             .iter()
             .map(|sample| (sample.timestamp, sample.watts))
             .collect()
+    }
+
+    pub async fn is_goe_energy_stable(&self) -> bool {
+        let tracker = self.goe_energy_tracker.read().await;
+        let Some(last_change) = tracker.last_change else {
+            return false;
+        };
+        Instant::now().duration_since(last_change)
+            >= Duration::from_secs(self.config.goe_energy_stable_secs)
     }
 
     pub async fn get_all_entities(&self) -> AppResult<DashboardState> {

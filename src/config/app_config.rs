@@ -98,7 +98,7 @@ impl AppConfig {
             .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_SOLAR_SAMPLE_SECS: {e}")))?;
 
         let goe_energy_stable_secs = env::var("HARETROPANEL_GOE_ENERGY_STABLE_SECS")
-            .unwrap_or_else(|_| "120".to_string())
+            .unwrap_or_else(|_| "60".to_string())
             .parse()
             .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_GOE_ENERGY_STABLE_SECS: {e}")))?;
         let goe_energy_delta_kwh = env::var("HARETROPANEL_GOE_ENERGY_DELTA_KWH")
