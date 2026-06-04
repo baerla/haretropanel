@@ -19,6 +19,8 @@
     <div class="demo-banner">Demo mode enabled</div>
     {% endif %}
 
+    <div class="last-updated">Last updated: {{ dashboard.last_updated }}</div>
+
     <div class="grid">
         <section class="panel panel-wide solar-panel">
             <div class="panel-header">
@@ -48,19 +50,23 @@
                 (function () {
                     var ctx = document.getElementById('solarChart');
                     if (!ctx || !window.Chart) {
+                        console.error('Chart.js not loaded or canvas not found');
                         return;
                     }
-                    var labels = {{ dashboard.solar.chart_labels_js | safe }};
-                    var values = {{ dashboard.solar.chart_values_js | safe }};
+                    var initialLabels = {{ dashboard.solar.chart_labels_js | safe }};
+                    var initialValues = {{ dashboard.solar.chart_values_js | safe }};
+                    var maxDataPoints = 60;
+
                     var gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 260);
                     gradient.addColorStop(0, 'rgba(100, 225, 255, 0.35)');
                     gradient.addColorStop(1, 'rgba(100, 225, 255, 0.04)');
-                    new Chart(ctx, {
+
+                    var chart = new Chart(ctx, {
                         type: 'line',
                         data: {
-                            labels: labels,
+                            labels: initialLabels.slice(-maxDataPoints),
                             datasets: [{
-                                data: values,
+                                data: initialValues.slice(-maxDataPoints),
                                 borderColor: 'rgba(110, 255, 204, 0.95)',
                                 backgroundColor: gradient,
                                 borderWidth: 2,
@@ -95,6 +101,37 @@
                             }
                         }
                     });
+
+                    console.log('Solar polling started');
+
+                    function updateSolarData() {
+                        fetch('/api/solar', { cache: 'no-cache' })
+                            .then(function(res) { return res.json(); })
+                            .then(function(data) {
+                                console.log('Solar data updated:', data.watts, 'W');
+
+                                // Update current output stat
+                                var wattsEl = document.querySelector('.stat:first-child .stat-value');
+                                if (wattsEl) wattsEl.textContent = Math.round(data.watts) + ' W';
+
+                                // Update utilization stat
+                                var utilEl = document.querySelector('.stat:nth-child(2) .stat-value');
+                                var barEl = document.querySelector('.stat:nth-child(2) .stat-progress');
+                                if (utilEl) utilEl.textContent = data.percent + '%';
+                                if (barEl) barEl.style.width = data.percent + '%';
+
+                                // Update chart
+                                if (data.chart_labels && data.chart_values) {
+                                    chart.data.labels = data.chart_labels.slice(-maxDataPoints);
+                                    chart.data.datasets[0].data = data.chart_values.slice(-maxDataPoints);
+                                    chart.update();
+                                }
+                            })
+                            .catch(function(err) { console.error('Solar poll failed:', err); });
+                    }
+
+                    // Poll every 10 seconds
+                    setInterval(updateSolarData, 10000);
                 })();
             </script>
         </section>

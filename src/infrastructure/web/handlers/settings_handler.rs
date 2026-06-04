@@ -17,6 +17,7 @@ use crate::{
 };
 
 pub async fn get_entity_settings(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+    tracing::debug!("Loading entity settings page");
     let all_state = state.dashboard_service.get_all_entities().await?;
 
     let selected_ids = state.dashboard_service.get_visible_entity_ids().await?;
@@ -91,5 +92,5 @@ pub async fn post_entity_settings(
         .save_entity_pages(page_assignments)
         .await?;
 
-    Ok(Redirect::to("/"))
+    Ok(Redirect::to("/?force_refresh=1"))
 }

@@ -1,6 +1,7 @@
 use crate::shared::error::{AppError, AppResult};
 use dotenvy::dotenv;
 use std::env;
+use tracing::info;
 
 #[derive(Clone, Debug)]
 pub struct AppConfig {
@@ -151,6 +152,17 @@ impl AppConfig {
             read_optional_u64("HARETROPANEL_CACHE_TTL_SENSOR_SECS")?;
         let dashboard_cache_ttl_climate_secs =
             read_optional_u64("HARETROPANEL_CACHE_TTL_CLIMATE_SECS")?;
+
+        info!(
+            demo_mode,
+            solar_entity_id = ?solar_entity_id,
+            charger_current_entity_id = ?charger_current_entity_id,
+            goe_status_entity_id = ?goe_status_entity_id,
+            goe_car_connected_entity_id = ?goe_car_connected_entity_id,
+            garage_left_entity_id = ?garage_left_entity_id,
+            garage_right_entity_id = ?garage_right_entity_id,
+            "Config loaded"
+        );
 
         Ok(Self {
             server_port,

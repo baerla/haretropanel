@@ -119,6 +119,8 @@ impl HaHttpClient {
         let mut url = self.base_url()?;
         url.set_path(&format!("api/services/{domain}/{service}"));
 
+        tracing::debug!(service_url = url.as_str(), "Sending HA service call");
+
         let resp = self
             .client
             .post(url.clone())
@@ -135,6 +137,8 @@ impl HaHttpClient {
             )));
         }
 
+        tracing::debug!(service_url = url.as_str(), "HA service call succeeded");
+
         Ok(())
     }
 }
@@ -144,6 +148,8 @@ impl HomeAssistantClient for HaHttpClient {
     async fn fetch_dashboard_state(&self) -> AppResult<DashboardState> {
         let mut url = self.base_url()?;
         url.set_path("api/states");
+
+        tracing::debug!(ha_url = url.as_str(), "Requesting all HA entity states");
 
         let resp = self
             .client
@@ -165,7 +171,10 @@ impl HomeAssistantClient for HaHttpClient {
             .await
             .map_err(AppError::Http)?;
 
+        let entity_count = ha_states.len();
         let entities = ha_states.into_iter().map(Self::build_entity).collect();
+
+        tracing::debug!(entity_count, "Fetched HA entity states");
 
         Ok(DashboardState { entities })
     }
@@ -180,6 +189,7 @@ impl HomeAssistantClient for HaHttpClient {
 
         let body = serde_json::json!({ "entity_id": id_str });
 
+        tracing::debug!(entity_id = %id_str, domain, "Calling HA toggle service");
         self.call_service(domain, "toggle", body).await
     }
 
@@ -194,6 +204,7 @@ impl HomeAssistantClient for HaHttpClient {
 
         let body = serde_json::json!({ "entity_id": id_str });
 
+        tracing::debug!(entity_id = %id_str, "Calling HA script turn_on service");
         self.call_service("script", "turn_on", body).await
     }
 }

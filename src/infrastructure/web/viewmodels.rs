@@ -80,6 +80,7 @@ pub struct DashboardViewModel {
     pub garage_left: GarageDoorViewModel,
     pub garage_right: GarageDoorViewModel,
     pub demo_mode: bool,
+    pub last_updated: String,
 }
 
 #[derive(Template)]

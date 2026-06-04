@@ -121,11 +121,17 @@ impl DashboardService {
             if let Some(cached) = &*cache {
                 let ttl = self.ttl_for_state(&cached.state);
                 if now.duration_since(cached.fetched_at) <= ttl {
+                    tracing::debug!(
+                        entity_count = cached.state.entities.len(),
+                        "Returning cached dashboard state (TTL {:?} active)",
+                        ttl.saturating_sub(now.duration_since(cached.fetched_at))
+                    );
                     return Ok(cached.state.clone());
                 }
             }
         }
 
+        tracing::info!("Fetching fresh dashboard state from Home Assistant");
         let fresh = self.ha_client.fetch_dashboard_state().await?;
         let ttl = self.ttl_for_state(&fresh);
 
@@ -208,6 +214,29 @@ impl DashboardService {
         &self.config
     }
 
+    /// Returns the human-readable time when the dashboard was last fetched from HA.
+    /// Returns "never" if no fetch has happened yet.
+    pub fn last_fetched_label(&self) -> String {
+        let cache = self.state_cache.try_read().ok();
+        match cache.as_ref().and_then(|c| c.as_ref()) {
+            Some(cached) => {
+                let now = Instant::now();
+                let elapsed = now.duration_since(cached.fetched_at);
+                let secs = elapsed.as_secs();
+                if secs < 2 {
+                    "just now".to_string()
+                } else if secs < 60 {
+                    format!("{}s ago", secs)
+                } else if secs < 3600 {
+                    format!("{}m {}s ago", secs / 60, secs % 60)
+                } else {
+                    format!("{}h {}m ago", secs / 3600, (secs % 3600) / 60)
+                }
+            }
+            None => "never".to_string(),
+        }
+    }
+
     pub async fn solar_history_points(&self) -> Vec<(Instant, f64)> {
         let history = self.solar_history.read().await;
         history
@@ -226,6 +255,7 @@ impl DashboardService {
     }
 
     pub async fn get_all_entities(&self) -> AppResult<DashboardState> {
+        tracing::debug!("get_all_entities: fetching fresh entities");
         self.fetch_state_with_cache().await
     }
 
@@ -255,6 +285,7 @@ impl DashboardService {
         force_refresh: bool,
     ) -> AppResult<DashboardState> {
         if force_refresh {
+            tracing::info!("Dashboard cache invalidated (force refresh)");
             self.invalidate_cache().await;
         }
         self.get_dashboard().await
@@ -277,13 +308,17 @@ impl DashboardService {
     }
 
     pub async fn toggle_entity(&self, id: &EntityId) -> AppResult<()> {
+        tracing::info!(entity_id = %id, "Toggling entity via Home Assistant");
         self.ha_client.toggle(id).await?;
+        tracing::debug!(entity_id = %id, "Entity toggled successfully, invalidating cache");
         self.invalidate_cache().await;
         Ok(())
     }
 
     pub async fn run_script(&self, id: &EntityId) -> AppResult<()> {
+        tracing::info!(entity_id = %id, "Running script via Home Assistant");
         self.ha_client.run_script(id).await?;
+        tracing::debug!(entity_id = %id, "Script executed successfully, invalidating cache");
         self.invalidate_cache().await;
         Ok(())
     }

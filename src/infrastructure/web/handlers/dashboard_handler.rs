@@ -42,12 +42,15 @@ pub async fn get_dashboard(
     let _requested_page = query.page.unwrap_or(1);
     let force_refresh = query.force_refresh.is_some();
 
+    tracing::debug!(force_refresh, "Serving dashboard page");
     let dashboard_state = state
         .dashboard_service
         .get_dashboard_with_refresh(force_refresh)
         .await?;
 
     let cfg = state.dashboard_service.config();
+
+    let last_updated_label = state.dashboard_service.last_fetched_label();
 
     let solar_entity = dashboard_state
         .entities
@@ -113,10 +116,11 @@ pub async fn get_dashboard(
         values.push(format!("{:.0}", watts));
     }
 
-    if labels.is_empty() {
-        labels.push("now".to_string());
-        values.push(format!("{:.0}", solar_watts));
-    }
+    // Always append the current solar wattage as the last point
+    // so the chart always has at least one visible point
+    let now_age_secs = now.elapsed().as_secs();
+    labels.push(format!("-{}s", now_age_secs.min(60)));
+    values.push(format!("{:.0}", solar_watts));
 
     let solar_vm = SolarViewModel {
         watts_label: format!("{:.0} W", solar_watts),
@@ -201,6 +205,7 @@ pub async fn get_dashboard(
         garage_left: make_garage_vm(garage_left_entity, "Garage Left"),
         garage_right: make_garage_vm(garage_right_entity, "Garage Right"),
         demo_mode: cfg.demo_mode,
+        last_updated: last_updated_label,
     };
 
     let template = DashboardTemplate {
