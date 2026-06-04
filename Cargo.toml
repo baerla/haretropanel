@@ -24,6 +24,11 @@ tracing-appender = "0.2"
 tower-http = { version = "0.6", features = ["trace"] }
 
 url = "2"
+chrono = "0.4"
+
+[dev-dependencies]
+mockall = "0.14"
+tempfile = "3"
 
 [package.metadata.askama]
 dir = "templates"

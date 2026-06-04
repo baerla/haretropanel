@@ -21,6 +21,17 @@
 
     <div class="last-updated">Last updated: {{ dashboard.last_updated }}</div>
 
+    {% if dashboard.page_tabs.len() > 1 %}
+    <div class="page-tabs">
+        {% for tab in dashboard.page_tabs %}
+        <a href="/?page={{ loop.index }}&force_refresh=1"
+           class="page-tab{% if loop.index == dashboard.active_tab %} page-tab-active{% endif %}">
+            {{ tab }}
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="grid">
         <section class="panel panel-wide solar-panel">
             <div class="panel-header">
@@ -178,5 +189,83 @@
             </div>
         </div>
     </section>
+
+    {% for entity in dashboard.page_entities %}
+    {% if entity.can_toggle %}
+    <section class="panel">
+        <div class="panel-header">
+            <div class="panel-title">{{ entity.name }}</div>
+            <div class="panel-meta">{{ entity.kind_label }}</div>
+        </div>
+        <div class="entity-body">
+            <div class="entity-value">
+                {% if entity.is_on %}
+                <span class="status-badge is-on">ON</span>
+                {% else %}
+                <span class="status-badge is-off">OFF</span>
+                {% endif %}
+            </div>
+            <form method="post" action="/toggle">
+                <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                <button type="submit" class="toggle-btn">Toggle</button>
+            </form>
+        </div>
+    </section>
+    {% elif entity.can_run_script %}
+    <section class="panel">
+        <div class="panel-header">
+            <div class="panel-title">{{ entity.name }}</div>
+            <div class="panel-meta">{{ entity.kind_label }}</div>
+        </div>
+        <div class="entity-body">
+            <div class="entity-value">
+                {% if entity.has_value %}
+                <span class="value">{{ entity.value }}</span>
+                {% endif %}
+            </div>
+            <form method="post" action="/run_script">
+                <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                <button type="submit" class="script-btn">Run</button>
+            </form>
+        </div>
+    </section>
+    {% elif entity.can_toggle_cover %}
+    <section class="panel">
+        <div class="panel-header">
+            <div class="panel-title">{{ entity.name }}</div>
+            <div class="panel-meta">{{ entity.kind_label }}</div>
+        </div>
+        <div class="entity-body">
+            <div class="entity-value">
+                {% if entity.is_on %}
+                <span class="status-badge is-on">Open</span>
+                {% else %}
+                <span class="status-badge is-off">Closed</span>
+                {% endif %}
+            </div>
+            <form method="post" action="/toggle">
+                <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                <button type="submit" class="toggle-btn">Toggle</button>
+            </form>
+        </div>
+    </section>
+    {% else %}
+    <section class="panel">
+        <div class="panel-header">
+            <div class="panel-title">{{ entity.name }}</div>
+            <div class="panel-meta">{{ entity.kind_label }}</div>
+        </div>
+        <div class="entity-body">
+            <div class="entity-value">
+                {% if entity.has_value %}
+                <span class="value">{{ entity.value }}</span>
+                {% else %}
+                <span class="value">N/A</span>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
+    {% endfor %}
 </div>
 {% endblock %}

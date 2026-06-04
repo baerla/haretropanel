@@ -81,6 +81,9 @@ pub struct DashboardViewModel {
     pub garage_right: GarageDoorViewModel,
     pub demo_mode: bool,
     pub last_updated: String,
+    pub page_tabs: Vec<String>,
+    pub active_tab: usize,
+    pub page_entities: Vec<EntityViewModel>,
 }
 
 #[derive(Template)]

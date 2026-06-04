@@ -4,6 +4,7 @@ use axum::{
     response::{Html, IntoResponse, Redirect},
     Form,
 };
+use chrono::{DateTime, Timelike};
 use serde::Deserialize;
 use tracing::info;
 
@@ -56,6 +57,13 @@ pub async fn get_dashboard(
         .entities
         .iter()
         .find(|e| e.id.0 == cfg.solar_entity_id);
+    tracing::debug!(
+        solar_entity_id = cfg.solar_entity_id,
+        solar_found = solar_entity.is_some(),
+        solar_entity_value = ?solar_entity.and_then(|e| e.value.as_ref()),
+        "Finding solar entity"
+    );
+
     let charger_entity = dashboard_state
         .entities
         .iter()
@@ -94,6 +102,13 @@ pub async fn get_dashboard(
             .clamp(0.0, 100.0) as u8
     };
 
+    tracing::debug!(
+        solar_raw_value = ?solar_entity.and_then(|e| e.value.as_ref()),
+        solar_watts,
+        percent,
+        "Solar wattage parsed"
+    );
+
     let max_watts_label = if cfg.solar_max_watts > 0.0 {
         format!("{:.0} W max", cfg.solar_max_watts)
     } else {
@@ -101,32 +116,49 @@ pub async fn get_dashboard(
     };
 
     let history = state.dashboard_service.solar_history_points().await;
-    let now = std::time::Instant::now();
     let mut labels: Vec<String> = Vec::new();
     let mut values: Vec<String> = Vec::new();
-    let max_points = (cfg.solar_history_minutes * 60 / cfg.solar_sample_secs).max(1) as usize;
+    // Show last 12 hours, skip nighttime (0 values)
+    let history_minutes = cfg.solar_history_minutes.max(12);
 
-    for (idx, (ts, watts)) in history.iter().enumerate() {
-        if idx + max_points < history.len() {
-            continue;
+    for (ts, watts) in history.iter().rev() {
+        if let Ok(elapsed) = std::time::SystemTime::now().duration_since(*ts) {
+            let age_mins = elapsed.as_secs() / 60;
+            if age_mins > history_minutes * 60 {
+                continue;
+            }
+            if let Some(local) = DateTime::from_timestamp(
+                ts.duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64,
+                0,
+            ) {
+                let hour = local.hour();
+                // Skip night hours (21:00 - 06:00)
+                if (hour >= 21 || hour < 6) && *watts <= 0.0 {
+                    continue;
+                }
+                labels.push(format!("{:02}:{:02}", hour, local.minute()));
+            } else {
+                labels.push(format!("-{}m", age_mins));
+            }
+            values.push(format!("{:.0}", watts));
         }
-        let age = now.duration_since(*ts).as_secs();
-        let mins = age / 60;
-        labels.push(format!("-{}m", mins));
-        values.push(format!("{:.0}", watts));
     }
 
-    // Always append the current solar wattage as the last point
-    // so the chart always has at least one visible point
-    let now_age_secs = now.elapsed().as_secs();
-    labels.push(format!("-{}s", now_age_secs.min(60)));
-    values.push(format!("{:.0}", solar_watts));
-
+    // Current solar_watts is already included above if non-zero; no separate append needed
     let solar_vm = SolarViewModel {
         watts_label: format!("{:.0} W", solar_watts),
         percent,
         max_watts_label,
-        chart_labels_js: format!("[{}]", labels.iter().map(|l| format!("\"{}\"", l)).collect::<Vec<_>>().join(",")),
+        chart_labels_js: format!(
+            "[{}]",
+            labels
+                .iter()
+                .map(|l| format!("\"{}\"", l))
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
         chart_values_js: format!("[{}]", values.join(",")),
     };
 
@@ -137,6 +169,13 @@ pub async fn get_dashboard(
     let goe_status = goe_status_entity
         .and_then(|e| e.value.clone())
         .unwrap_or_else(|| "Unknown".to_string());
+
+    tracing::debug!(
+        charger_entity_id = cfg.charger_current_entity_id,
+        charger_value,
+        goe_status,
+        "Charger entity values extracted"
+    );
 
     let mut car_connected = false;
     if let Some(e) = goe_car_entity {
@@ -199,6 +238,56 @@ pub async fn get_dashboard(
         }
     };
 
+    let requested_page = query.page.unwrap_or(1);
+    let entity_pages = state.dashboard_service.get_entity_pages().await.unwrap_or_default();
+
+    // Collect regular entities (exclude system entities from pagination)
+    let system_entity_ids: std::collections::HashSet<&str> = [
+        cfg.solar_entity_id.as_str(),
+        cfg.charger_current_entity_id.as_str(),
+        cfg.goe_status_entity_id.as_str(),
+        cfg.goe_car_connected_entity_id.as_str(),
+        cfg.garage_left_entity_id.as_str(),
+        cfg.garage_right_entity_id.as_str(),
+    ]
+    .into_iter()
+    .collect();
+
+    let regular_entities: Vec<&crate::domain::Entity> = dashboard_state
+        .entities
+        .iter()
+        .filter(|e| !system_entity_ids.contains(e.id.0.as_str()))
+        .collect();
+
+    // Build page tabs from entity pages config
+    let mut page_list: Vec<(usize, String)> = Vec::new(); // (page_num, entity_name)
+    for entity in &regular_entities {
+        if let Some(&page) = entity_pages.get(&entity.id.0) {
+            if page > 0 && page_list.iter().all(|&(p, _)| p != page) {
+                page_list.push((page, format!("Page {}", page)));
+            }
+        }
+    }
+    page_list.sort_by_key(|&(p, _)| p);
+    let page_tabs: Vec<String> = page_list.into_iter().map(|(_, name)| name).collect();
+    let active_tab = if requested_page > 0 && requested_page <= page_tabs.len() {
+        requested_page
+    } else {
+        1
+    };
+
+    // Filter entities for current page
+    let page_entities: Vec<crate::infrastructure::web::viewmodels::EntityViewModel> = regular_entities
+        .into_iter()
+        .filter(|e| {
+            entity_pages
+                .get(&e.id.0)
+                .map(|&p| p == active_tab)
+                .unwrap_or(false)
+        })
+        .map(|e| e.into())
+        .collect();
+
     let dashboard_vm = DashboardViewModel {
         solar: solar_vm,
         charger: charger_vm,
@@ -206,6 +295,9 @@ pub async fn get_dashboard(
         garage_right: make_garage_vm(garage_right_entity, "Garage Right"),
         demo_mode: cfg.demo_mode,
         last_updated: last_updated_label,
+        page_tabs,
+        active_tab,
+        page_entities,
     };
 
     let template = DashboardTemplate {

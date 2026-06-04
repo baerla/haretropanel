@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use async_trait::async_trait;
@@ -39,7 +39,7 @@ struct CachedDashboardState {
 
 #[derive(Clone, Debug)]
 struct SolarSample {
-    timestamp: Instant,
+    timestamp: SystemTime,
     watts: f64,
 }
 
@@ -148,11 +148,15 @@ impl DashboardService {
                     .parse::<f64>()
                 {
                     let mut history = self.solar_history.write().await;
-                    history.push_back(SolarSample { timestamp: now, watts });
+                    history.push_back(SolarSample { timestamp: SystemTime::now(), watts });
 
                     let max_age = Duration::from_secs(self.config.solar_history_minutes * 60);
                     while let Some(front) = history.front() {
-                        if now.duration_since(front.timestamp) > max_age {
+                        if SystemTime::now()
+                            .duration_since(front.timestamp)
+                            .unwrap_or(Duration::ZERO)
+                            > max_age
+                        {
                             history.pop_front();
                         } else {
                             break;
@@ -237,7 +241,7 @@ impl DashboardService {
         }
     }
 
-    pub async fn solar_history_points(&self) -> Vec<(Instant, f64)> {
+    pub async fn solar_history_points(&self) -> Vec<(SystemTime, f64)> {
         let history = self.solar_history.read().await;
         history
             .iter()
@@ -267,13 +271,26 @@ impl DashboardService {
             return Ok(all);
         }
 
-        let visible_set: HashSet<_> = visible_ids.into_iter().collect();
+        let visible_set: HashSet<EntityId> = visible_ids.into_iter().collect();
+
+        let cfg = &self.config;
+        // System entities must always be visible even if not in the visible list
+        let system_ids: HashSet<String> = [
+            cfg.solar_entity_id.clone(),
+            cfg.charger_current_entity_id.clone(),
+            cfg.goe_status_entity_id.clone(),
+            cfg.goe_car_connected_entity_id.clone(),
+            cfg.garage_left_entity_id.clone(),
+            cfg.garage_right_entity_id.clone(),
+        ]
+        .into_iter()
+        .collect();
 
         let filtered = DashboardState {
             entities: all
                 .entities
                 .into_iter()
-                .filter(|e| visible_set.contains(&e.id))
+                .filter(|e| visible_set.contains(&e.id) || system_ids.contains(&e.id.0))
                 .collect(),
         };
 

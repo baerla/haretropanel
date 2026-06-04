@@ -101,6 +101,16 @@ impl HaHttpClient {
         let is_on = Self::is_on_state(&kind, &ha.state);
         let value = Self::build_value(&kind, &ha.state, &ha);
 
+        tracing::debug!(
+            entity_id = &ha.entity_id,
+            raw_state = &ha.state,
+            name = &name,
+            kind = ?kind,
+            is_on,
+            value = ?value,
+            "Parsed HA state response"
+        );
+
         Entity {
             id: EntityId(ha.entity_id),
             name,
