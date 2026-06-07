@@ -1,8 +1,7 @@
-use std::collections::HashMap;
-
 use askama::Template;
 
-use crate::domain::{DashboardState, Entity, EntityId, EntityKind};
+use crate::domain::{Entity, EntityKind, DashboardState};
+use crate::domain::value_objects::EntityId;
 
 #[derive(Debug)]
 pub struct EntityViewModel {
@@ -14,6 +13,7 @@ pub struct EntityViewModel {
     pub value: String,
     pub can_toggle: bool,
     pub can_run_script: bool,
+    pub can_toggle_cover: bool,
 }
 
 impl From<&Entity> for EntityViewModel {
@@ -24,6 +24,7 @@ impl From<&Entity> for EntityViewModel {
             EntityKind::Sensor => "Sensor",
             EntityKind::Climate => "Climate",
             EntityKind::Script => "Script",
+            EntityKind::Cover => "Cover",
         }
         .to_string();
 
@@ -35,6 +36,7 @@ impl From<&Entity> for EntityViewModel {
 
         let can_toggle = matches!(e.kind, EntityKind::Light | EntityKind::Switch);
         let can_run_script = matches!(e.kind, EntityKind::Script);
+        let can_toggle_cover = matches!(e.kind, EntityKind::Cover);
 
         Self {
             id: e.id.to_string(),
@@ -45,55 +47,50 @@ impl From<&Entity> for EntityViewModel {
             value,
             can_toggle,
             can_run_script,
+            can_toggle_cover,
         }
     }
 }
 
-pub struct DashboardPageViewModel {
-    pub entities: Vec<EntityViewModel>,
-    pub current_page: usize,
-    pub total_pages: usize,
+pub struct SolarViewModel {
+    pub watts_label: String,
+    pub percent: u8,
+    pub max_watts_label: String,
+    pub chart_labels_js: String,
+    pub chart_values_js: String,
 }
 
-impl DashboardPageViewModel {
-    pub fn from_state_and_pages(
-        state: DashboardState,
-        entity_pages: &HashMap<String, usize>,
-        requested_page: usize,
-    ) -> Self {
-        let items: Vec<(usize, EntityViewModel)> = state
-            .entities
-            .iter()
-            .map(|e| {
-                let id = e.id.to_string();
-                let page = entity_pages.get(&id).cloned().unwrap_or(1).max(1);
-                (page, EntityViewModel::from(e))
-            })
-            .collect();
+pub struct ChargerViewModel {
+    pub amps_label: String,
+    pub status_label: String,
+    pub car_state_label: String,
+    pub car_state_class: String,
+}
 
-        let total_pages = items.iter().map(|(p, _)| *p).max().unwrap_or(1);
-        let page = requested_page.clamp(1, total_pages);
+pub struct GarageDoorViewModel {
+    pub id: String,
+    pub name: String,
+    pub status_label: String,
+    pub action_label: String,
+    pub button_class: String,
+}
 
-        let entities = items
-            .into_iter()
-            .filter(|(p, _)| *p == page)
-            .map(|(_, vm)| vm)
-            .collect();
-
-        Self {
-            entities,
-            current_page: page,
-            total_pages,
-        }
-    }
+pub struct DashboardViewModel {
+    pub solar: SolarViewModel,
+    pub charger: ChargerViewModel,
+    pub garage_left: GarageDoorViewModel,
+    pub garage_right: GarageDoorViewModel,
+    pub demo_mode: bool,
+    pub last_updated: String,
+    pub page_tabs: Vec<String>,
+    pub active_tab: usize,
+    pub page_entities: Vec<EntityViewModel>,
 }
 
 #[derive(Template)]
 #[template(path = "dashboard.html")]
 pub struct DashboardTemplate<'a> {
-    pub entities: &'a [EntityViewModel],
-    pub current_page: usize,
-    pub total_pages: usize,
+    pub dashboard: &'a DashboardViewModel,
 }
 
 #[derive(Debug)]
@@ -180,111 +177,6 @@ mod tests {
         assert_eq!(vm.kind_label, "Script");
         assert!(!vm.can_toggle);
         assert!(vm.can_run_script);
-    }
-
-    // -- DashboardPageViewModel --
-
-    #[test]
-    fn test_page_view_model_all_on_one_page() {
-        let state = DashboardState {
-            entities: vec![
-                make_entity("light.a", "A", EntityKind::Light, true, None),
-                make_entity("light.b", "B", EntityKind::Light, false, None),
-            ],
-        };
-        let pages = HashMap::new();
-        let vm = DashboardPageViewModel::from_state_and_pages(state, &pages, 1);
-        assert_eq!(vm.current_page, 1);
-        assert_eq!(vm.total_pages, 1);
-        assert_eq!(vm.entities.len(), 2);
-    }
-
-    #[test]
-    fn test_page_view_model_two_pages() {
-        let state = DashboardState {
-            entities: vec![
-                make_entity("light.a", "A", EntityKind::Light, true, None),
-                make_entity("light.b", "B", EntityKind::Light, false, None),
-                make_entity("light.c", "C", EntityKind::Light, true, None),
-            ],
-        };
-        let mut pages = HashMap::new();
-        pages.insert("light.a".to_string(), 1);
-        pages.insert("light.b".to_string(), 2);
-        pages.insert("light.c".to_string(), 1);
-
-        let vm = DashboardPageViewModel::from_state_and_pages(state.clone(), &pages, 1);
-        assert_eq!(vm.current_page, 1);
-        assert_eq!(vm.total_pages, 2);
-        assert_eq!(vm.entities.len(), 2); // light.a + light.c
-
-        let vm2 = DashboardPageViewModel::from_state_and_pages(state, &pages, 2);
-        assert_eq!(vm2.entities.len(), 1); // light.b only
-    }
-
-    #[test]
-    fn test_page_view_model_default_page_one() {
-        let state = DashboardState {
-            entities: vec![
-                make_entity("light.a", "A", EntityKind::Light, true, None),
-            ],
-        };
-        let mut pages = HashMap::new();
-        pages.insert("light.a".to_string(), 0); // page 0 should clamp to 1
-        let vm = DashboardPageViewModel::from_state_and_pages(state, &pages, 1);
-        assert_eq!(vm.entities.len(), 1);
-    }
-
-    #[test]
-    fn test_page_view_model_clamp_page() {
-        let state = DashboardState {
-            entities: vec![
-                make_entity("light.a", "A", EntityKind::Light, true, None),
-            ],
-        };
-        let vm = DashboardPageViewModel::from_state_and_pages(state, &HashMap::new(), 100);
-        assert_eq!(vm.current_page, 1);
-        assert_eq!(vm.total_pages, 1);
-    }
-
-    #[test]
-    fn test_page_view_model_empty_entities() {
-        let state = DashboardState { entities: vec![] };
-        let vm = DashboardPageViewModel::from_state_and_pages(state, &HashMap::new(), 1);
-        assert_eq!(vm.entities.len(), 0);
-        assert_eq!(vm.current_page, 1);
-        assert_eq!(vm.total_pages, 1);
-    }
-
-    #[test]
-    fn test_page_view_model_page_from_hashmap() {
-        let state = DashboardState {
-            entities: vec![
-                make_entity("light.a", "A", EntityKind::Light, true, None),
-                make_entity("light.b", "B", EntityKind::Light, true, None),
-            ],
-        };
-        let mut pages = HashMap::new();
-        pages.insert("light.a".to_string(), 1);
-        pages.insert("light.b".to_string(), 3);
-        let vm = DashboardPageViewModel::from_state_and_pages(state, &pages, 1);
-        // light.a is on page 1, light.b is on page 3, so total_pages becomes 3
-        assert_eq!(vm.current_page, 1);
-        assert_eq!(vm.total_pages, 3);
-        assert_eq!(vm.entities.len(), 1); // only light.a
-    }
-
-    #[test]
-    fn test_page_view_model_no_hashmap_entry_uses_default_1() {
-        let state = DashboardState {
-            entities: vec![
-                make_entity("light.a", "A", EntityKind::Light, true, None),
-            ],
-        };
-        let pages = HashMap::new(); // no entries
-        let vm = DashboardPageViewModel::from_state_and_pages(state, &pages, 1);
-        assert_eq!(vm.entities.len(), 1);
-        assert_eq!(vm.total_pages, 1);
     }
 
     // -- EntitySettingsViewModel --

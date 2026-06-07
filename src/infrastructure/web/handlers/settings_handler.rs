@@ -16,9 +16,8 @@ use crate::{
     shared::error::AppResult,
 };
 
-pub async fn get_entity_settings(
-    State(state): State<AppState>,
-) -> AppResult<impl IntoResponse> {
+pub async fn get_entity_settings(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+    tracing::debug!("Loading entity settings page");
     let all_state = state.dashboard_service.get_all_entities().await?;
 
     let selected_ids = state.dashboard_service.get_visible_entity_ids().await?;
@@ -93,7 +92,7 @@ pub async fn post_entity_settings(
         .save_entity_pages(page_assignments)
         .await?;
 
-    Ok(Redirect::to("/"))
+    Ok(Redirect::to("/?force_refresh=1"))
 }
 
 #[cfg(test)]
@@ -111,7 +110,8 @@ mod tests {
     use crate::application::services::{DashboardLayoutRepository, DashboardService};
     use crate::application::services::dashboard_service::DashboardCacheConfig;
     use crate::application::ports::HomeAssistantClient;
-    use crate::domain::{DashboardState, EntityId};
+    use crate::config::AppConfig;
+use crate::domain::{DashboardState, EntityId};
     use crate::infrastructure::web::AppState;
     use crate::shared::error::AppResult;
 
@@ -197,6 +197,7 @@ mod tests {
             Arc::new(NullHaClient),
             repo.clone(),
             cache_config(),
+            AppConfig::from_env().unwrap(),
         ));
         let state = AppState {
             dashboard_service: service,

@@ -9,6 +9,7 @@ pub enum EntityKind {
     Sensor,
     Climate,
     Script,
+    Cover,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

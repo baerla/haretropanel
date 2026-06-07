@@ -1,72 +1,271 @@
 {% extends "base.html" %}
 
-{% block title %}HARetroPanel - Home Assistant panel{% endblock %}
+{% block title %}HARetroPanel - Solar Dashboard{% endblock %}
 
 {% block content %}
-<div class="toolbar">
-    <h1>HARetroPanel - Home Assistant panel</h1>
-    <div class="toolbar-actions">
-        <a href="/?page={{ current_page }}&force_refresh=1" class="toolbar-link">
-            Refresh
-        </a>
-        <a href="/settings/entities" class="toolbar-link">
-            Settings
-        </a>
-    </div>
-</div>
+<div class="dashboard">
+    <header class="header">
+        <div class="title-block">
+            <div class="title">Solar Dashboard</div>
+            <div class="subtitle">Live production & charging status</div>
+        </div>
+        <div class="header-actions">
+            <a href="/?force_refresh=1" class="header-link">Refresh</a>
+            <a href="/settings/entities" class="header-link">Settings</a>
+        </div>
+    </header>
 
-<div class="pagination">
-    {% if current_page > 1 %}
-        <a href="/?page={{ current_page - 1 }}" class="pager-link">&laquo; Prev</a>
-    {% else %}
-        <span class="pager-disabled">&laquo; Prev</span>
+    {% if dashboard.demo_mode %}
+    <div class="demo-banner">Demo mode enabled</div>
     {% endif %}
 
-    <span class="pager-info">
-        Page {{ current_page }} / {{ total_pages }}
-    </span>
+    <div class="last-updated">Last updated: {{ dashboard.last_updated }}</div>
 
-    {% if current_page < total_pages %}
-        <a href="/?page={{ current_page + 1 }}" class="pager-link">Next &raquo;</a>
-    {% else %}
-        <span class="pager-disabled">Next &raquo;</span>
-    {% endif %}
-</div>
-
-<div class="grid">
-    {% for entity in entities %}
-    <div class="card">
-        <h2 class="card-title">{{ entity.name }}</h2>
-
-        <p class="card-meta">Type: {{ entity.kind_label }}</p>
-
-        {% if entity.has_value %}
-        <p class="card-value">Value: {{ entity.value }}</p>
-        {% else %}
-        <p class="card-value">
-            Value:
-            {% if entity.is_on %}on{% else %}off{% endif %}
-        </p>
-        {% endif %}
-
-        {% if entity.can_toggle %}
-        <form method="post" action="/toggle" style="margin-top: 0.5rem;">
-            <input type="hidden" name="entity_id" value="{{ entity.id }}">
-            <button type="submit" class="btn">
-                Toggle
-            </button>
-        </form>
-        {% endif %}
-
-        {% if entity.can_run_script %}
-        <form method="post" action="/run_script" style="margin-top: 0.5rem;">
-            <input type="hidden" name="entity_id" value="{{ entity.id }}">
-            <button type="submit" class="btn">
-                Run
-            </button>
-        </form>
-        {% endif %}
+    {% if dashboard.page_tabs.len() > 1 %}
+    <div class="page-tabs">
+        {% for tab in dashboard.page_tabs %}
+        <a href="/?page={{ loop.index }}&force_refresh=1"
+           class="page-tab{% if loop.index == dashboard.active_tab %} page-tab-active{% endif %}">
+            {{ tab }}
+        </a>
+        {% endfor %}
     </div>
+    {% endif %}
+
+    <div class="grid">
+        <section class="panel panel-wide solar-panel">
+            <div class="panel-header">
+                <div class="panel-title">Solar Generation</div>
+                <div class="panel-meta">{{ dashboard.solar.max_watts_label }}</div>
+            </div>
+            <div class="solar-hero">
+                <div class="solar-stats">
+                    <div class="stat">
+                        <div class="stat-label">Current output</div>
+                        <div class="stat-value">{{ dashboard.solar.watts_label }}</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Utilization</div>
+                        <div class="stat-value">{{ dashboard.solar.percent }}%</div>
+                        <div class="stat-bar">
+                            <div class="stat-progress" style="width: {{ dashboard.solar.percent }}%;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="solar-chart">
+                    <canvas id="solarChart"></canvas>
+                </div>
+            </div>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js"></script>
+            <script>
+                (function () {
+                    var ctx = document.getElementById('solarChart');
+                    if (!ctx || !window.Chart) {
+                        console.error('Chart.js not loaded or canvas not found');
+                        return;
+                    }
+                    var initialLabels = {{ dashboard.solar.chart_labels_js | safe }};
+                    var initialValues = {{ dashboard.solar.chart_values_js | safe }};
+                    var maxDataPoints = 60;
+
+                    var gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 260);
+                    gradient.addColorStop(0, 'rgba(100, 225, 255, 0.35)');
+                    gradient.addColorStop(1, 'rgba(100, 225, 255, 0.04)');
+
+                    var chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: initialLabels.slice(-maxDataPoints),
+                            datasets: [{
+                                data: initialValues.slice(-maxDataPoints),
+                                borderColor: 'rgba(110, 255, 204, 0.95)',
+                                backgroundColor: gradient,
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                lineTension: 0.2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: { duration: 0 },
+                            legend: { display: false },
+                            tooltips: {
+                                intersect: false,
+                                mode: 'index',
+                                displayColors: false,
+                                callbacks: {
+                                    label: function(tooltipItem) {
+                                        return tooltipItem.yLabel + ' W';
+                                    }
+                                }
+                            },
+                            scales: {
+                                xAxes: [{
+                                    gridLines: { color: 'rgba(255,255,255,0.05)' },
+                                    ticks: { fontColor: '#8d96ab' }
+                                }],
+                                yAxes: [{
+                                    gridLines: { color: 'rgba(255,255,255,0.05)' },
+                                    ticks: { beginAtZero: true, fontColor: '#8d96ab' }
+                                }]
+                            }
+                        }
+                    });
+
+                    console.log('Solar polling started');
+
+                    function updateSolarData() {
+                        fetch('/api/solar', { cache: 'no-cache' })
+                            .then(function(res) { return res.json(); })
+                            .then(function(data) {
+                                console.log('Solar data updated:', data.watts, 'W');
+
+                                // Update current output stat
+                                var wattsEl = document.querySelector('.stat:first-child .stat-value');
+                                if (wattsEl) wattsEl.textContent = Math.round(data.watts) + ' W';
+
+                                // Update utilization stat
+                                var utilEl = document.querySelector('.stat:nth-child(2) .stat-value');
+                                var barEl = document.querySelector('.stat:nth-child(2) .stat-progress');
+                                if (utilEl) utilEl.textContent = data.percent + '%';
+                                if (barEl) barEl.style.width = data.percent + '%';
+
+                                // Update chart
+                                if (data.chart_labels && data.chart_values) {
+                                    chart.data.labels = data.chart_labels.slice(-maxDataPoints);
+                                    chart.data.datasets[0].data = data.chart_values.slice(-maxDataPoints);
+                                    chart.update();
+                                }
+                            })
+                            .catch(function(err) { console.error('Solar poll failed:', err); });
+                    }
+
+                    // Poll every 10 seconds
+                    setInterval(updateSolarData, 10000);
+                })();
+            </script>
+        </section>
+
+        <section class="panel charger-panel">
+            <div class="panel-header">
+                <div class="panel-title">Go-E Charger</div>
+                <div class="panel-meta">Status</div>
+            </div>
+            <div class="charger-body">
+                <div class="charger-reading">{{ dashboard.charger.amps_label }}</div>
+                <div class="charger-status">{{ dashboard.charger.status_label }}</div>
+                <div class="charger-car-state {{ dashboard.charger.car_state_class }}">{{ dashboard.charger.car_state_label }}</div>
+                <div class="charger-meta">Ladestrom aktuell</div>
+            </div>
+        </section>
+    </div>
+
+    <section class="panel garage-panel">
+        <div class="panel-header">
+            <div class="panel-title">Garage Doors</div>
+        </div>
+        <div class="garage-grid">
+            <div class="garage-card">
+                <div class="garage-name">{{ dashboard.garage_left.name }}</div>
+                <div class="garage-state">{{ dashboard.garage_left.status_label }}</div>
+                <form method="post" action="/toggle">
+                    <input type="hidden" name="entity_id" value="{{ dashboard.garage_left.id }}">
+                    <button type="submit" class="{{ dashboard.garage_left.button_class }}">
+                        {{ dashboard.garage_left.action_label }}
+                    </button>
+                </form>
+            </div>
+
+            <div class="garage-card">
+                <div class="garage-name">{{ dashboard.garage_right.name }}</div>
+                <div class="garage-state">{{ dashboard.garage_right.status_label }}</div>
+                <form method="post" action="/toggle">
+                    <input type="hidden" name="entity_id" value="{{ dashboard.garage_right.id }}">
+                    <button type="submit" class="{{ dashboard.garage_right.button_class }}">
+                        {{ dashboard.garage_right.action_label }}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    {% for entity in dashboard.page_entities %}
+    {% if entity.can_toggle %}
+    <section class="panel">
+        <div class="panel-header">
+            <div class="panel-title">{{ entity.name }}</div>
+            <div class="panel-meta">{{ entity.kind_label }}</div>
+        </div>
+        <div class="entity-body">
+            <div class="entity-value">
+                {% if entity.is_on %}
+                <span class="status-badge is-on">ON</span>
+                {% else %}
+                <span class="status-badge is-off">OFF</span>
+                {% endif %}
+            </div>
+            <form method="post" action="/toggle">
+                <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                <button type="submit" class="toggle-btn">Toggle</button>
+            </form>
+        </div>
+    </section>
+    {% elif entity.can_run_script %}
+    <section class="panel">
+        <div class="panel-header">
+            <div class="panel-title">{{ entity.name }}</div>
+            <div class="panel-meta">{{ entity.kind_label }}</div>
+        </div>
+        <div class="entity-body">
+            <div class="entity-value">
+                {% if entity.has_value %}
+                <span class="value">{{ entity.value }}</span>
+                {% endif %}
+            </div>
+            <form method="post" action="/run_script">
+                <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                <button type="submit" class="script-btn">Run</button>
+            </form>
+        </div>
+    </section>
+    {% elif entity.can_toggle_cover %}
+    <section class="panel">
+        <div class="panel-header">
+            <div class="panel-title">{{ entity.name }}</div>
+            <div class="panel-meta">{{ entity.kind_label }}</div>
+        </div>
+        <div class="entity-body">
+            <div class="entity-value">
+                {% if entity.is_on %}
+                <span class="status-badge is-on">Open</span>
+                {% else %}
+                <span class="status-badge is-off">Closed</span>
+                {% endif %}
+            </div>
+            <form method="post" action="/toggle">
+                <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                <button type="submit" class="toggle-btn">Toggle</button>
+            </form>
+        </div>
+    </section>
+    {% else %}
+    <section class="panel">
+        <div class="panel-header">
+            <div class="panel-title">{{ entity.name }}</div>
+            <div class="panel-meta">{{ entity.kind_label }}</div>
+        </div>
+        <div class="entity-body">
+            <div class="entity-value">
+                {% if entity.has_value %}
+                <span class="value">{{ entity.value }}</span>
+                {% else %}
+                <span class="value">N/A</span>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
     {% endfor %}
 </div>
 {% endblock %}

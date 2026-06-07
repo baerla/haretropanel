@@ -39,6 +39,7 @@ pub fn is_on(kind: &EntityKind, state: &str) -> bool {
         EntityKind::Climate => matches!(state, "heat" | "cool" | "heat_cool" | "auto"),
         EntityKind::Sensor => matches!(state, "on" | "open" | "home" | "above_horizon"),
         EntityKind::Script => state == "on",
+        EntityKind::Cover => matches!(state, "open" | "opening"),
     }
 }
 
@@ -53,6 +54,13 @@ pub fn build_value(kind: &EntityKind, state: &str, ha: &HaStateResponse) -> Opti
         }
         EntityKind::Script => Some(state.to_string()),
         EntityKind::Light | EntityKind::Switch => None,
+        EntityKind::Cover => {
+            if let Some(unit) = &ha.attributes.unit_of_measurement {
+                Some(format!("{state} {unit}"))
+            } else {
+                Some(state.to_string())
+            }
+        }
     }
 }
 
@@ -86,6 +94,46 @@ impl HaHttpClient {
             .map_err(|e| AppError::Internal(format!("Invalid HA_BASE_URL: {e}")))
     }
 
+    fn map_entity_kind(entity_id: &str) -> EntityKind {
+        if entity_id.starts_with("light.") {
+            EntityKind::Light
+        } else if entity_id.starts_with("switch.") {
+            EntityKind::Switch
+        } else if entity_id.starts_with("climate.") {
+            EntityKind::Climate
+        } else if entity_id.starts_with("script.") {
+            EntityKind::Script
+        } else if entity_id.starts_with("cover.") {
+            EntityKind::Cover
+        } else {
+            EntityKind::Sensor
+        }
+    }
+
+    fn is_on_state(kind: &EntityKind, state: &str) -> bool {
+        match kind {
+            EntityKind::Light | EntityKind::Switch => state == "on",
+            EntityKind::Climate => matches!(state, "heat" | "cool" | "heat_cool" | "auto"),
+            EntityKind::Sensor => matches!(state, "on" | "open" | "home" | "above_horizon"),
+            EntityKind::Script => state == "on",
+            EntityKind::Cover => matches!(state, "open" | "opening"),
+        }
+    }
+
+    fn build_value(kind: &EntityKind, state: &str, ha: &HaStateResponse) -> Option<String> {
+        match kind {
+            EntityKind::Sensor | EntityKind::Climate | EntityKind::Cover => {
+                if let Some(unit) = &ha.attributes.unit_of_measurement {
+                    Some(format!("{state} {unit}"))
+                } else {
+                    Some(state.to_string())
+                }
+            }
+            EntityKind::Script => Some(state.to_string()),
+            EntityKind::Light | EntityKind::Switch => None,
+        }
+    }
+
     fn build_entity(ha: HaStateResponse) -> Entity {
         let kind = entity_kind_from_id(&ha.entity_id);
 
@@ -97,6 +145,16 @@ impl HaHttpClient {
 
         let is_on = is_on(&kind, &ha.state);
         let value = build_value(&kind, &ha.state, &ha);
+
+        tracing::debug!(
+            entity_id = &ha.entity_id,
+            raw_state = &ha.state,
+            name = &name,
+            kind = ?kind,
+            is_on,
+            value = ?value,
+            "Parsed HA state response"
+        );
 
         Entity {
             id: EntityId(ha.entity_id),
@@ -116,6 +174,8 @@ impl HaHttpClient {
         let mut url = self.base_url()?;
         url.set_path(&format!("api/services/{domain}/{service}"));
 
+        tracing::debug!(service_url = url.as_str(), "Sending HA service call");
+
         let resp = self
             .client
             .post(url.clone())
@@ -132,6 +192,8 @@ impl HaHttpClient {
             )));
         }
 
+        tracing::debug!(service_url = url.as_str(), "HA service call succeeded");
+
         Ok(())
     }
 }
@@ -141,6 +203,8 @@ impl HomeAssistantClient for HaHttpClient {
     async fn fetch_dashboard_state(&self) -> AppResult<DashboardState> {
         let mut url = self.base_url()?;
         url.set_path("api/states");
+
+        tracing::debug!(ha_url = url.as_str(), "Requesting all HA entity states");
 
         let resp = self
             .client
@@ -162,10 +226,10 @@ impl HomeAssistantClient for HaHttpClient {
             .await
             .map_err(AppError::Http)?;
 
-        let entities = ha_states
-            .into_iter()
-            .map(Self::build_entity)
-            .collect();
+        let entity_count = ha_states.len();
+        let entities = ha_states.into_iter().map(Self::build_entity).collect();
+
+        tracing::debug!(entity_count, "Fetched HA entity states");
 
         Ok(DashboardState { entities })
     }
@@ -180,6 +244,7 @@ impl HomeAssistantClient for HaHttpClient {
 
         let body = serde_json::json!({ "entity_id": id_str });
 
+        tracing::debug!(entity_id = %id_str, domain, "Calling HA toggle service");
         self.call_service(domain, "toggle", body).await
     }
 
@@ -194,6 +259,7 @@ impl HomeAssistantClient for HaHttpClient {
 
         let body = serde_json::json!({ "entity_id": id_str });
 
+        tracing::debug!(entity_id = %id_str, "Calling HA script turn_on service");
         self.call_service("script", "turn_on", body).await
     }
 }
@@ -385,6 +451,20 @@ mod tests {
             dashboard_cache_ttl_switch_secs: None,
             dashboard_cache_ttl_sensor_secs: None,
             dashboard_cache_ttl_climate_secs: None,
+            charger_current_entity_id: "".to_string(),
+            demo_mode: false,
+            garage_left_entity_id: "".to_string(),
+            garage_right_entity_id: "".to_string(),
+            goe_car_connected_entity_id: "".to_string(),
+            goe_energy_delta_kwh: 0.0,
+            goe_energy_stable_secs: 60,
+            goe_energy_entity_id: "".to_string(),
+            goe_status_entity_id: "".to_string(),
+            solar_entity_id: "".to_string(),
+            solar_history_minutes: 3600,
+            solar_max_watts: 0.0,
+            solar_sample_secs: 60,
+
         }
     }
 
