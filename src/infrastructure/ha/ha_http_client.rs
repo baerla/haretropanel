@@ -456,6 +456,7 @@ mod tests {
             garage_left_entity_id: "".to_string(),
             garage_right_entity_id: "".to_string(),
             goe_car_connected_entity_id: "".to_string(),
+            goe_charging_entity_id: "".to_string(),
             goe_energy_delta_kwh: 0.0,
             goe_energy_stable_secs: 60,
             goe_energy_entity_id: "".to_string(),

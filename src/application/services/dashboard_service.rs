@@ -280,6 +280,7 @@ impl DashboardService {
             cfg.charger_current_entity_id.clone(),
             cfg.goe_status_entity_id.clone(),
             cfg.goe_car_connected_entity_id.clone(),
+            cfg.goe_charging_entity_id.clone(),
             cfg.garage_left_entity_id.clone(),
             cfg.garage_right_entity_id.clone(),
         ]

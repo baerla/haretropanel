@@ -19,6 +19,7 @@ pub struct AppConfig {
     pub goe_status_entity_id: String,
     pub goe_energy_entity_id: String,
     pub goe_car_connected_entity_id: String,
+    pub goe_charging_entity_id: String,
     pub garage_left_entity_id: String,
     pub garage_right_entity_id: String,
     pub solar_max_watts: f64,
@@ -81,6 +82,8 @@ impl AppConfig {
             .unwrap_or_else(|_| "sensor.goe_055063_eto".to_string());
         let goe_car_connected_entity_id = env::var("HARETROPANEL_GOE_CAR_CONNECTED_ENTITY_ID")
             .unwrap_or_else(|_| "binary_sensor.goe_055063_car_0".to_string());
+        let goe_charging_entity_id = env::var("HARETROPANEL_GOE_CHARGING_ENTITY_ID")
+            .unwrap_or_else(|_| "binary_sensor.goe_055063_laden_0".to_string());
         let garage_left_entity_id = env::var("HARETROPANEL_GARAGE_LEFT_ENTITY_ID")
             .unwrap_or_else(|_| "cover.garage_left".to_string());
         let garage_right_entity_id = env::var("HARETROPANEL_GARAGE_RIGHT_ENTITY_ID")
@@ -172,6 +175,7 @@ impl AppConfig {
             charger_current_entity_id = ?charger_current_entity_id,
             goe_status_entity_id = ?goe_status_entity_id,
             goe_car_connected_entity_id = ?goe_car_connected_entity_id,
+            goe_charging_entity_id = ?goe_charging_entity_id,
             garage_left_entity_id = ?garage_left_entity_id,
             garage_right_entity_id = ?garage_right_entity_id,
             "Config loaded"
@@ -187,6 +191,7 @@ impl AppConfig {
             goe_status_entity_id,
             goe_energy_entity_id,
             goe_car_connected_entity_id,
+            goe_charging_entity_id,
             garage_left_entity_id,
             garage_right_entity_id,
             solar_max_watts,

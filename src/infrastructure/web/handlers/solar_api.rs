@@ -69,6 +69,85 @@ pub async fn get_solar(State(state): State<AppState>) -> AppResult<impl IntoResp
         "Solar wattage is 0 — entity may be missing or value not set"
     );
 
+    let (charger_amps, charger_status, car_state_label, car_state_class, car_connected, car_charging, charger_paused) = {
+        let charger_entity = dashboard_state
+            .entities
+            .iter()
+            .find(|e| e.id.0 == cfg.charger_current_entity_id);
+        let goe_status_entity = dashboard_state
+            .entities
+            .iter()
+            .find(|e| e.id.0 == cfg.goe_status_entity_id);
+        let car_connected_entity = dashboard_state
+            .entities
+            .iter()
+            .find(|e| e.id.0 == cfg.goe_car_connected_entity_id);
+
+        let charger_value = charger_entity
+            .as_ref()
+            .and_then(|e| e.value.as_ref())
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "0.0 A".to_string());
+
+        let goe_status = goe_status_entity
+            .as_ref()
+            .and_then(|e| e.value.as_ref())
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        let charger_paused = goe_status.contains("Ladestop");
+
+        let car_connected = car_connected_entity
+            .as_ref()
+            .and_then(|e| e.value.as_ref())
+            .map(|v| v == "true" || v == "True")
+            .unwrap_or(false);
+
+        let goe_charging_entity = dashboard_state
+            .entities
+            .iter()
+            .find(|e| e.id.0 == cfg.goe_charging_entity_id);
+        let car_charging = goe_charging_entity
+            .as_ref()
+            .and_then(|e| e.value.as_ref())
+            .map(|v| v == "true" || v == "True" || v == "on")
+            .unwrap_or(false);
+
+        let goe_status_lower = goe_status.to_lowercase();
+        let status_indicates_absent = goe_status_lower.contains("nicht verbunden")
+            || goe_status_lower.contains("disconnected")
+            || goe_status_lower.contains("deactivated");
+        let status_indicates_finished = goe_status_lower.contains("fertig")
+            || goe_status_lower.contains("abgeschlossen")
+            || goe_status_lower.contains("voll")
+            || goe_status_lower.contains("finished");
+        let energy_stable = state.dashboard_service.is_goe_energy_stable().await;
+        let car_present = car_connected || !status_indicates_absent;
+
+        let car_state_label = if !car_present
+            || status_indicates_absent
+            || (status_indicates_finished && energy_stable)
+        {
+            if status_indicates_absent || (!car_present && !status_indicates_finished) {
+                "Nicht angeschlossen".to_string()
+            } else {
+                "Auto voll".to_string()
+            }
+        } else if car_connected {
+            "Am Laden".to_string()
+        } else {
+            "Nicht angeschlossen".to_string()
+        };
+        let car_state_class = if car_state_label == "Auto voll" {
+            "is-full"
+        } else if car_state_label == "Am Laden" {
+            "is-charging"
+        } else {
+            "is-empty"
+        };
+        (charger_value, goe_status, car_state_label, car_state_class, car_connected, car_charging, charger_paused)
+    };
+
     let body = serde_json::json!({
         "watts": solar_watts,
         "max_watts": cfg.solar_max_watts,
@@ -79,6 +158,13 @@ pub async fn get_solar(State(state): State<AppState>) -> AppResult<impl IntoResp
         },
         "chart_labels": chart_labels,
         "chart_values": chart_values,
+        "charger_amps": charger_amps,
+        "charger_status": charger_status,
+        "charger_car_state": car_state_label,
+        "charger_car_state_class": car_state_class,
+        "charger_car_connected": car_connected,
+        "charger_charging": car_charging,
+        "charger_paused": charger_paused,
     });
 
     Ok(Json(body))

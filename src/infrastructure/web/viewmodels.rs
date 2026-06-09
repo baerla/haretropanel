@@ -64,6 +64,9 @@ pub struct ChargerViewModel {
     pub status_label: String,
     pub car_state_label: String,
     pub car_state_class: String,
+    pub car_connected: bool,
+    pub car_charging: bool,
+    pub pill_paused: bool,
 }
 
 pub struct GarageDoorViewModel {

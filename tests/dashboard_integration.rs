@@ -57,6 +57,7 @@ fn test_config() -> AppConfig {
         goe_status_entity_id: String::new(),
         goe_energy_entity_id: String::new(),
         goe_car_connected_entity_id: String::new(),
+        goe_charging_entity_id: String::new(),
         garage_left_entity_id: String::new(),
         garage_right_entity_id: String::new(),
         solar_max_watts: 9000.0,

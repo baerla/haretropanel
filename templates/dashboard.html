@@ -124,6 +124,41 @@
                                     chart.data.datasets[0].data = data.chart_values.slice(-maxDataPoints);
                                     chart.update();
                                 }
+
+                                // Update charger section
+                                if (data.charger_amps !== undefined) {
+                                    var ampsEl = document.querySelector('.charger-reading');
+                                    if (ampsEl) ampsEl.textContent = data.charger_amps;
+                                }
+                                if (data.charger_status !== undefined) {
+                                    var statusEl = document.querySelector('.charger-status');
+                                    if (statusEl) statusEl.textContent = data.charger_status;
+                                }
+                                if (data.charger_car_state !== undefined) {
+                                    var carEl = document.querySelector('.charger-car-state');
+                                    if (carEl) {
+                                        carEl.textContent = data.charger_car_state;
+                                        carEl.className = 'charger-car-state ' + data.charger_car_state_class;
+                                    }
+                                }
+                                if (data.charger_car_connected !== undefined) {
+                                    var pillEl = document.querySelector('.charger-pill');
+                                    if (pillEl) {
+                                        if (data.charger_paused) {
+                                            pillEl.textContent = 'PAUSIERT';
+                                            pillEl.className = 'charger-pill charger-pill-paused';
+                                        } else if (data.charger_charging) {
+                                            pillEl.textContent = 'Am Laden';
+                                            pillEl.className = 'charger-pill charger-pill-charging';
+                                        } else if (data.charger_car_connected) {
+                                            pillEl.textContent = 'Angeschlossen';
+                                            pillEl.className = 'charger-pill';
+                                        } else {
+                                            pillEl.textContent = 'Nicht angeschlossen';
+                                            pillEl.className = 'charger-pill charger-pill-disconnected';
+                                        }
+                                    }
+                                }
                             })
                             .catch(function(err) { console.error('Solar poll failed:', err); });
                     }
@@ -140,10 +175,21 @@
                 <div class="panel-meta">Status</div>
             </div>
             <div class="charger-body">
+                <div class="charger-meta">Ladestrom aktuell</div>
                 <div class="charger-reading">{{ dashboard.charger.amps_label }}</div>
                 <div class="charger-status">{{ dashboard.charger.status_label }}</div>
+                {% if dashboard.charger.pill_paused %}
+                <div class="charger-pill charger-pill-paused">PAUSIERT</div>
+                {% elif dashboard.charger.car_connected %}
+                {% if dashboard.charger.car_charging %}
+                <div class="charger-pill charger-pill-charging">Am Laden</div>
+                {% else %}
+                <div class="charger-pill">Angeschlossen</div>
+                {% endif %}
+                {% else %}
+                <div class="charger-pill charger-pill-disconnected">Nicht angeschlossen</div>
+                {% endif %}
                 <div class="charger-car-state {{ dashboard.charger.car_state_class }}">{{ dashboard.charger.car_state_label }}</div>
-                <div class="charger-meta">Ladestrom aktuell</div>
             </div>
         </section>
     </div>

@@ -76,6 +76,10 @@ pub async fn get_dashboard(
         .entities
         .iter()
         .find(|e| e.id.0 == cfg.goe_car_connected_entity_id);
+    let goe_charging_entity = dashboard_state
+        .entities
+        .iter()
+        .find(|e| e.id.0 == cfg.goe_charging_entity_id);
     let garage_left_entity = dashboard_state
         .entities
         .iter()
@@ -162,8 +166,12 @@ pub async fn get_dashboard(
     );
 
     let mut car_connected = false;
+    let mut car_charging = false;
     if let Some(e) = goe_car_entity {
         car_connected = e.is_on || e.value.as_deref() == Some("on");
+    }
+    if let Some(e) = goe_charging_entity {
+        car_charging = e.is_on || e.value.as_deref() == Some("on");
     }
 
     let goe_status_lower = goe_status.to_lowercase();
@@ -184,18 +192,18 @@ pub async fn get_dashboard(
         || (status_indicates_finished && energy_stable)
     {
         if status_indicates_absent || (!car_present && !status_indicates_finished) {
-            "Not present"
+            "Nicht angeschlossen"
         } else {
-            "Car full"
+            "Auto voll"
         }
     } else if car_connected {
-        "Charging"
+        "Angeschlossen"
     } else {
-        "Not present"
+        "Nicht angeschlossen"
     };
-    let car_state_class = if car_state_label == "Car full" {
+    let car_state_class = if car_state_label == "Auto voll" {
         "is-full"
-    } else if car_state_label == "Charging" {
+    } else if car_state_label == "Am Laden" {
         "is-charging"
     } else {
         "is-empty"
@@ -203,9 +211,12 @@ pub async fn get_dashboard(
 
     let charger_vm = ChargerViewModel {
         amps_label: charger_value,
-        status_label: goe_status,
+        status_label: goe_status.clone(),
         car_state_label: car_state_label.to_string(),
         car_state_class: car_state_class.to_string(),
+        car_connected,
+        car_charging,
+        pill_paused: goe_status.contains("Ladestop"),
     };
 
     let make_garage_vm = |entity: Option<&crate::domain::Entity>, default_name: &str| {
