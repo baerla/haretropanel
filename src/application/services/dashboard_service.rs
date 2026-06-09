@@ -5,11 +5,13 @@ use std::{
 };
 
 use async_trait::async_trait;
+use chrono::{DateTime, Timelike};
 use tokio::sync::RwLock;
 
 use crate::{
     application::ports::HomeAssistantClient,
     domain::{DashboardState, EntityId, EntityKind},
+    infrastructure::web::viewmodels::{ChargerState, SolarChartPoints},
     shared::error::AppResult,
 };
 
@@ -247,6 +249,135 @@ impl DashboardService {
             .iter()
             .map(|sample| (sample.timestamp, sample.watts))
             .collect()
+    }
+
+    pub fn parse_solar_watts(&self, state: &DashboardState) -> f64 {
+        let cfg = self.config();
+        state
+            .entities
+            .iter()
+            .find(|e| e.id.0 == cfg.solar_entity_id)
+            .and_then(|e| e.value.as_ref())
+            .and_then(|v| {
+                v.split_whitespace()
+                    .next()
+                    .and_then(|n| n.parse::<f64>().ok())
+            })
+            .unwrap_or(0.0)
+    }
+
+    pub async fn compute_solar_chart(&self) -> SolarChartPoints {
+        let history = self.solar_history_points().await;
+        let cfg = self.config();
+        let history_minutes = cfg.solar_history_minutes.max(12);
+
+        let mut labels: Vec<String> = Vec::new();
+        let mut values: Vec<f64> = Vec::new();
+
+        for (ts, watts) in history.iter() {
+            if let Ok(elapsed) = SystemTime::now().duration_since(*ts) {
+                let age_mins = elapsed.as_secs() / 60;
+                if age_mins > history_minutes * 60 {
+                    continue;
+                }
+                if let Some(local) = DateTime::from_timestamp(
+                    ts.duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64,
+                    0,
+                ) {
+                    let hour = local.hour();
+                    if (hour >= 21 || hour < 6) && *watts <= 0.0 {
+                        continue;
+                    }
+                    labels.push(format!("{:02}:{:02}", hour, local.minute()));
+                } else {
+                    labels.push(format!("-{}m", age_mins));
+                }
+                values.push(*watts);
+            }
+        }
+
+        SolarChartPoints { labels, values }
+    }
+
+    pub async fn compute_car_state(&self, state: &DashboardState) -> ChargerState {
+        let cfg = self.config();
+
+        let charger_entity = state.entities.iter().find(|e| e.id.0 == cfg.charger_current_entity_id);
+        let goe_status_entity = state.entities.iter().find(|e| e.id.0 == cfg.goe_status_entity_id);
+        let car_connected_entity = state.entities.iter().find(|e| e.id.0 == cfg.goe_car_connected_entity_id);
+        let goe_charging_entity = state.entities.iter().find(|e| e.id.0 == cfg.goe_charging_entity_id);
+
+        let charger_value = charger_entity
+            .as_ref()
+            .and_then(|e| e.value.as_ref())
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "0.0 A".to_string());
+
+        let goe_status = goe_status_entity
+            .as_ref()
+            .and_then(|e| e.value.as_ref())
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        let paused = goe_status.contains("Ladestop");
+
+        let car_connected = car_connected_entity
+            .as_ref()
+            .and_then(|e| e.value.as_ref())
+            .map(|v| v == "true" || v == "True")
+            .unwrap_or(false);
+
+        let car_charging = goe_charging_entity
+            .as_ref()
+            .and_then(|e| e.value.as_ref())
+            .map(|v| v == "true" || v == "True" || v == "on")
+            .unwrap_or(false);
+
+        let goe_status_lower = goe_status.to_lowercase();
+        let status_indicates_absent = goe_status_lower.contains("nicht verbunden")
+            || goe_status_lower.contains("disconnected")
+            || goe_status_lower.contains("deactivated");
+        let status_indicates_finished = goe_status_lower.contains("fertig")
+            || goe_status_lower.contains("abgeschlossen")
+            || goe_status_lower.contains("voll")
+            || goe_status_lower.contains("finished");
+        let energy_stable = self.is_goe_energy_stable().await;
+        let car_present = car_connected || !status_indicates_absent;
+
+        let car_state_label = if !car_present
+            || status_indicates_absent
+            || (status_indicates_finished && energy_stable)
+        {
+            if status_indicates_absent || (!car_present && !status_indicates_finished) {
+                "Nicht angeschlossen".to_string()
+            } else {
+                "Auto voll".to_string()
+            }
+        } else if car_connected {
+            "Angeschlossen".to_string()
+        } else {
+            "Nicht angeschlossen".to_string()
+        };
+
+        let car_state_class = if car_state_label == "Auto voll" {
+            "is-full".to_string()
+        } else if car_state_label == "Angeschlossen" {
+            "is-charging".to_string()
+        } else {
+            "is-empty".to_string()
+        };
+
+        ChargerState {
+            charger_value,
+            status: goe_status,
+            paused,
+            car_connected,
+            car_charging,
+            car_state_label,
+            car_state_class,
+        }
     }
 
     pub async fn is_goe_energy_stable(&self) -> bool {

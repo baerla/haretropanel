@@ -4,7 +4,6 @@ use axum::{
     response::{Html, IntoResponse, Redirect},
     Form,
 };
-use chrono::{DateTime, Timelike};
 use serde::Deserialize;
 use tracing::info;
 
@@ -64,22 +63,6 @@ pub async fn get_dashboard(
         "Finding solar entity"
     );
 
-    let charger_entity = dashboard_state
-        .entities
-        .iter()
-        .find(|e| e.id.0 == cfg.charger_current_entity_id);
-    let goe_status_entity = dashboard_state
-        .entities
-        .iter()
-        .find(|e| e.id.0 == cfg.goe_status_entity_id);
-    let goe_car_entity = dashboard_state
-        .entities
-        .iter()
-        .find(|e| e.id.0 == cfg.goe_car_connected_entity_id);
-    let goe_charging_entity = dashboard_state
-        .entities
-        .iter()
-        .find(|e| e.id.0 == cfg.goe_charging_entity_id);
     let garage_left_entity = dashboard_state
         .entities
         .iter()
@@ -89,14 +72,7 @@ pub async fn get_dashboard(
         .iter()
         .find(|e| e.id.0 == cfg.garage_right_entity_id);
 
-    let solar_watts = solar_entity
-        .and_then(|e| e.value.clone())
-        .and_then(|v| {
-            v.split_whitespace()
-                .next()
-                .and_then(|n| n.parse::<f64>().ok())
-        })
-        .unwrap_or(0.0);
+    let solar_watts = state.dashboard_service.parse_solar_watts(&dashboard_state);
 
     let max_watts_label = if cfg.solar_max_watts > 0.0 {
         format!("{:.0} W max", cfg.solar_max_watts)
@@ -104,119 +80,34 @@ pub async fn get_dashboard(
         "Max unavailable".to_string()
     };
 
-    let history = state.dashboard_service.solar_history_points().await;
-    let mut labels: Vec<String> = Vec::new();
-    let mut values: Vec<String> = Vec::new();
-    // Show last 12 hours, skip nighttime (0 values)
-    let history_minutes = cfg.solar_history_minutes.max(12);
+    let chart_points = state.dashboard_service.compute_solar_chart().await;
+    let chart_labels: Vec<String> = chart_points.labels;
+    let chart_values: Vec<f64> = chart_points.values;
 
-    for (ts, watts) in history.iter() {
-        if let Ok(elapsed) = std::time::SystemTime::now().duration_since(*ts) {
-            let age_mins = elapsed.as_secs() / 60;
-            if age_mins > history_minutes * 60 {
-                continue;
-            }
-            if let Some(local) = DateTime::from_timestamp(
-                ts.duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64,
-                0,
-            ) {
-                let hour = local.hour();
-                // Skip night hours (21:00 - 06:00)
-                if (hour >= 21 || hour < 6) && *watts <= 0.0 {
-                    continue;
-                }
-                labels.push(format!("{:02}:{:02}", hour, local.minute()));
-            } else {
-                labels.push(format!("-{}m", age_mins));
-            }
-            values.push(format!("{:.0}", watts));
-        }
-    }
-
-    // Current solar_watts is already included above if non-zero; no separate append needed
     let solar_vm = SolarViewModel {
         watts_label: format!("{:.0} W", solar_watts),
         max_watts_label,
         chart_labels_js: format!(
             "[{}]",
-            labels
+            chart_labels
                 .iter()
                 .map(|l| format!("\"{}\"", l))
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        chart_values_js: format!("[{}]", values.join(",")),
+        chart_values_js: format!("[{}]", chart_values.iter().map(|v| format!("{:.0}", v)).collect::<Vec<_>>().join(",")),
     };
 
-    let charger_value = charger_entity
-        .and_then(|e| e.value.clone())
-        .unwrap_or_else(|| "0 W".to_string());
-
-    let goe_status = goe_status_entity
-        .and_then(|e| e.value.clone())
-        .unwrap_or_else(|| "Unknown".to_string());
-
-    tracing::debug!(
-        charger_entity_id = cfg.charger_current_entity_id,
-        charger_value,
-        goe_status,
-        "Charger entity values extracted"
-    );
-
-    let mut car_connected = false;
-    let mut car_charging = false;
-    if let Some(e) = goe_car_entity {
-        car_connected = e.is_on || e.value.as_deref() == Some("on");
-    }
-    if let Some(e) = goe_charging_entity {
-        car_charging = e.is_on || e.value.as_deref() == Some("on");
-    }
-
-    let goe_status_lower = goe_status.to_lowercase();
-    let status_indicates_absent = goe_status_lower.contains("nicht")
-        || goe_status_lower.contains("stopp")
-        || goe_status_lower.contains("stop")
-        || goe_status_lower.contains("offline")
-        || goe_status_lower.contains("keine");
-    let status_indicates_finished = goe_status_lower.contains("fertig")
-        || goe_status_lower.contains("abgeschlossen")
-        || goe_status_lower.contains("voll")
-        || goe_status_lower.contains("finished");
-    let energy_stable = state.dashboard_service.is_goe_energy_stable().await;
-    let car_present = car_connected || !status_indicates_absent;
-
-    let car_state_label = if !car_present
-        || status_indicates_absent
-        || (status_indicates_finished && energy_stable)
-    {
-        if status_indicates_absent || (!car_present && !status_indicates_finished) {
-            "Nicht angeschlossen"
-        } else {
-            "Auto voll"
-        }
-    } else if car_connected {
-        "Angeschlossen"
-    } else {
-        "Nicht angeschlossen"
-    };
-    let car_state_class = if car_state_label == "Auto voll" {
-        "is-full"
-    } else if car_state_label == "Am Laden" {
-        "is-charging"
-    } else {
-        "is-empty"
-    };
+    let charger_state = state.dashboard_service.compute_car_state(&dashboard_state).await;
 
     let charger_vm = ChargerViewModel {
-        amps_label: charger_value,
-        status_label: goe_status.clone(),
-        car_state_label: car_state_label.to_string(),
-        car_state_class: car_state_class.to_string(),
-        car_connected,
-        car_charging,
-        pill_paused: goe_status.contains("Ladestop"),
+        amps_label: charger_state.charger_value,
+        status_label: charger_state.status.clone(),
+        car_state_label: charger_state.car_state_label,
+        car_state_class: charger_state.car_state_class,
+        car_connected: charger_state.car_connected,
+        car_charging: charger_state.car_charging,
+        pill_paused: charger_state.paused,
     };
 
     let make_garage_vm = |entity: Option<&crate::domain::Entity>, default_name: &str| {

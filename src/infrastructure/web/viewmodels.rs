@@ -1,7 +1,6 @@
 use askama::Template;
 
-use crate::domain::{Entity, EntityKind, DashboardState};
-use crate::domain::value_objects::EntityId;
+use crate::domain::{Entity, EntityKind};
 
 #[derive(Debug)]
 pub struct EntityViewModel {
@@ -50,6 +49,23 @@ impl From<&Entity> for EntityViewModel {
             can_toggle_cover,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct ChargerState {
+    pub charger_value: String,
+    pub status: String,
+    pub paused: bool,
+    pub car_connected: bool,
+    pub car_charging: bool,
+    pub car_state_label: String,
+    pub car_state_class: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SolarChartPoints {
+    pub labels: Vec<String>,
+    pub values: Vec<f64>,
 }
 
 pub struct SolarViewModel {
@@ -116,6 +132,8 @@ pub struct EntitiesSettingsTemplate<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::domain::EntityId;
 
     fn make_entity(id: &str, name: &str, kind: EntityKind, is_on: bool, value: Option<String>) -> Entity {
         Entity {
