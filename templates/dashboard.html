@@ -44,13 +44,6 @@
                         <div class="stat-label">Current output</div>
                         <div class="stat-value">{{ dashboard.solar.watts_label }}</div>
                     </div>
-                    <div class="stat">
-                        <div class="stat-label">Utilization</div>
-                        <div class="stat-value">{{ dashboard.solar.percent }}%</div>
-                        <div class="stat-bar">
-                            <div class="stat-progress" style="width: {{ dashboard.solar.percent }}%;"></div>
-                        </div>
-                    </div>
                 </div>
                 <div class="solar-chart">
                     <canvas id="solarChart"></canvas>
@@ -124,12 +117,6 @@
                                 // Update current output stat
                                 var wattsEl = document.querySelector('.stat:first-child .stat-value');
                                 if (wattsEl) wattsEl.textContent = Math.round(data.watts) + ' W';
-
-                                // Update utilization stat
-                                var utilEl = document.querySelector('.stat:nth-child(2) .stat-value');
-                                var barEl = document.querySelector('.stat:nth-child(2) .stat-progress');
-                                if (utilEl) utilEl.textContent = data.percent + '%';
-                                if (barEl) barEl.style.width = data.percent + '%';
 
                                 // Update chart
                                 if (data.chart_labels && data.chart_values) {

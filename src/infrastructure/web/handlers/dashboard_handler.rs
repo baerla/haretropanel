@@ -94,21 +94,6 @@ pub async fn get_dashboard(
         })
         .unwrap_or(0.0);
 
-    let percent = if cfg.solar_max_watts <= 0.0 {
-        0
-    } else {
-        ((solar_watts / cfg.solar_max_watts) * 100.0)
-            .round()
-            .clamp(0.0, 100.0) as u8
-    };
-
-    tracing::debug!(
-        solar_raw_value = ?solar_entity.and_then(|e| e.value.as_ref()),
-        solar_watts,
-        percent,
-        "Solar wattage parsed"
-    );
-
     let max_watts_label = if cfg.solar_max_watts > 0.0 {
         format!("{:.0} W max", cfg.solar_max_watts)
     } else {
@@ -121,7 +106,7 @@ pub async fn get_dashboard(
     // Show last 12 hours, skip nighttime (0 values)
     let history_minutes = cfg.solar_history_minutes.max(12);
 
-    for (ts, watts) in history.iter().rev() {
+    for (ts, watts) in history.iter() {
         if let Ok(elapsed) = std::time::SystemTime::now().duration_since(*ts) {
             let age_mins = elapsed.as_secs() / 60;
             if age_mins > history_minutes * 60 {
@@ -149,7 +134,6 @@ pub async fn get_dashboard(
     // Current solar_watts is already included above if non-zero; no separate append needed
     let solar_vm = SolarViewModel {
         watts_label: format!("{:.0} W", solar_watts),
-        percent,
         max_watts_label,
         chart_labels_js: format!(
             "[{}]",
@@ -195,13 +179,24 @@ pub async fn get_dashboard(
     let energy_stable = state.dashboard_service.is_goe_energy_stable().await;
     let car_present = car_connected || !status_indicates_absent;
 
-    let car_state_label = if car_present && (energy_stable || status_indicates_finished) {
-        "Car full"
+    let car_state_label = if !car_present
+        || status_indicates_absent
+        || (status_indicates_finished && energy_stable)
+    {
+        if status_indicates_absent || (!car_present && !status_indicates_finished) {
+            "Not present"
+        } else {
+            "Car full"
+        }
+    } else if car_connected {
+        "Charging"
     } else {
-        "Car not present"
+        "Not present"
     };
     let car_state_class = if car_state_label == "Car full" {
         "is-full"
+    } else if car_state_label == "Charging" {
+        "is-charging"
     } else {
         "is-empty"
     };

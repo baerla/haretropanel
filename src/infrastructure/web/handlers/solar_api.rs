@@ -36,7 +36,7 @@ pub async fn get_solar(State(state): State<AppState>) -> AppResult<impl IntoResp
     let mut chart_labels: Vec<String> = Vec::new();
     let mut chart_values: Vec<f64> = Vec::new();
 
-    for (ts, watts) in history.iter().rev() {
+    for (ts, watts) in history.iter() {
         if let Ok(elapsed) = std::time::SystemTime::now().duration_since(*ts) {
             let age_mins = elapsed.as_secs() / 60;
             if age_mins > history_minutes * 60 {

@@ -54,7 +54,6 @@ impl From<&Entity> for EntityViewModel {
 
 pub struct SolarViewModel {
     pub watts_label: String,
-    pub percent: u8,
     pub max_watts_label: String,
     pub chart_labels_js: String,
     pub chart_values_js: String,
