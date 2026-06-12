@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
+use chrono::prelude::*;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Timelike};
@@ -225,19 +226,9 @@ impl DashboardService {
     pub fn last_fetched_label(&self) -> String {
         let cache = self.state_cache.try_read().ok();
         match cache.as_ref().and_then(|c| c.as_ref()) {
-            Some(cached) => {
-                let now = Instant::now();
-                let elapsed = now.duration_since(cached.fetched_at);
-                let secs = elapsed.as_secs();
-                if secs < 2 {
-                    "just now".to_string()
-                } else if secs < 60 {
-                    format!("{}s ago", secs)
-                } else if secs < 3600 {
-                    format!("{}m {}s ago", secs / 60, secs % 60)
-                } else {
-                    format!("{}h {}m ago", secs / 3600, (secs % 3600) / 60)
-                }
+            Some(_) => {
+                let now = Local::now();
+                format!("{}", now.format("%d.%m.%Y %H:%M:%S"))
             }
             None => "never".to_string(),
         }

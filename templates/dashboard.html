@@ -7,11 +7,11 @@
     <header class="header">
         <div class="title-block">
             <div class="title">Solar Dashboard</div>
-            <div class="subtitle">Live production & charging status</div>
+            <!--<div class="subtitle">Live production & charging status</div>-->
         </div>
         <div class="header-actions">
-            <a href="/?force_refresh=1" class="header-link">Refresh</a>
-            <a href="/settings/entities" class="header-link">Settings</a>
+            <a href="/?force_refresh=1" class="header-link">Aktualisieren</a>
+            <a href="/settings/entities" class="header-link" style="display: none">Einstellungen</a>
         </div>
     </header>
 
@@ -19,7 +19,7 @@
     <div class="demo-banner">Demo mode enabled</div>
     {% endif %}
 
-    <div class="last-updated">Last updated: {{ dashboard.last_updated }}</div>
+    <div class="last-updated">Letztes Update: {{ dashboard.last_updated }}</div>
 
     {% if dashboard.page_tabs.len() > 1 %}
     <div class="page-tabs">
@@ -165,6 +165,12 @@
                                 if (data.garage_right) {
                                     updateGarage(data.garage_right, 'right');
                                 }
+
+                                // Update last updated timestamp
+                                var lastUpdatedEl = document.querySelector('.last-updated');
+                                if (lastUpdatedEl) {
+                                    lastUpdatedEl.textContent = 'Letztes Update: ' + new Date(Date.now()).toLocaleString("de-DE");
+                                }
                             })
                             .catch(function(err) { console.error('Solar poll failed:', err); });
                     }
@@ -202,7 +208,7 @@
 
     <section class="panel garage-panel">
         <div class="panel-header">
-            <div class="panel-title">Garage Doors</div>
+            <div class="panel-title">Garagen</div>
         </div>
         <div class="garage-grid">
             <div id="garage-left-wrapper" class="garage-card">
@@ -277,9 +283,9 @@
         <div class="entity-body">
             <div class="entity-value">
                 {% if entity.is_on %}
-                <span class="status-badge is-on">Open</span>
+                <span class="status-badge is-on">Offen</span>
                 {% else %}
-                <span class="status-badge is-off">Closed</span>
+                <span class="status-badge is-off">Geschlossen</span>
                 {% endif %}
             </div>
             <form method="post" action="/toggle">
