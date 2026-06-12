@@ -35,13 +35,13 @@
     <div class="grid">
         <section class="panel panel-wide solar-panel">
             <div class="panel-header">
-                <div class="panel-title">Solar Generation</div>
+                <div class="panel-title">PV Einspeisung</div>
                 <div class="panel-meta">{{ dashboard.solar.max_watts_label }}</div>
             </div>
             <div class="solar-hero">
                 <div class="solar-stats">
                     <div class="stat">
-                        <div class="stat-label">Current output</div>
+                        <div class="stat-label">Aktuell</div>
                         <div class="stat-value">{{ dashboard.solar.watts_label }}</div>
                     </div>
                 </div>
@@ -159,8 +159,25 @@
                                         }
                                     }
                                 }
+                                if (data.garage_left) {
+                                    updateGarage(data.garage_left, 'left');
+                                }
+                                if (data.garage_right) {
+                                    updateGarage(data.garage_right, 'right');
+                                }
                             })
                             .catch(function(err) { console.error('Solar poll failed:', err); });
+                    }
+
+                    function updateGarage(data, side) {
+                        var wrapper = document.getElementById('garage-' + side + '-wrapper');
+                        if (!wrapper) return;
+                        var statusEl = wrapper.querySelector('.status');
+                        var actionEl = wrapper.querySelector('.action');
+                        var btnEl = wrapper.querySelector('.garage-btn');
+                        if (statusEl) statusEl.textContent = data.status;
+                        if (actionEl) actionEl.textContent = data.action;
+                        if (btnEl) btnEl.setAttribute('class', data.button_class);
                     }
 
                     // Poll every 10 seconds
@@ -178,17 +195,6 @@
                 <div class="charger-meta">Ladestrom aktuell</div>
                 <div class="charger-reading">{{ dashboard.charger.amps_label }}</div>
                 <div class="charger-status">{{ dashboard.charger.status_label }}</div>
-                {% if dashboard.charger.pill_paused %}
-                <div class="charger-pill charger-pill-paused">PAUSIERT</div>
-                {% elif dashboard.charger.car_connected %}
-                {% if dashboard.charger.car_charging %}
-                <div class="charger-pill charger-pill-charging">Am Laden</div>
-                {% else %}
-                <div class="charger-pill">Angeschlossen</div>
-                {% endif %}
-                {% else %}
-                <div class="charger-pill charger-pill-disconnected">Nicht angeschlossen</div>
-                {% endif %}
                 <div class="charger-car-state {{ dashboard.charger.car_state_class }}">{{ dashboard.charger.car_state_label }}</div>
             </div>
         </section>
@@ -199,9 +205,9 @@
             <div class="panel-title">Garage Doors</div>
         </div>
         <div class="garage-grid">
-            <div class="garage-card">
+            <div id="garage-left-wrapper" class="garage-card">
                 <div class="garage-name">{{ dashboard.garage_left.name }}</div>
-                <div class="garage-state">{{ dashboard.garage_left.status_label }}</div>
+                <div class="garage-state status">{{ dashboard.garage_left.status_label }}</div>
                 <form method="post" action="/toggle">
                     <input type="hidden" name="entity_id" value="{{ dashboard.garage_left.id }}">
                     <button type="submit" class="{{ dashboard.garage_left.button_class }}">
@@ -210,9 +216,9 @@
                 </form>
             </div>
 
-            <div class="garage-card">
+            <div id="garage-right-wrapper" class="garage-card">
                 <div class="garage-name">{{ dashboard.garage_right.name }}</div>
-                <div class="garage-state">{{ dashboard.garage_right.status_label }}</div>
+                <div class="garage-state status">{{ dashboard.garage_right.status_label }}</div>
                 <form method="post" action="/toggle">
                     <input type="hidden" name="entity_id" value="{{ dashboard.garage_right.id }}">
                     <button type="submit" class="{{ dashboard.garage_right.button_class }}">

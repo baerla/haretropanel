@@ -21,6 +21,38 @@ pub async fn get_solar(State(state): State<AppState>) -> AppResult<impl IntoResp
 
     let charger_state = state.dashboard_service.compute_car_state(&dashboard_state).await;
 
+    let make_garage_status = |entity_id: &str, default_name: &str| -> serde_json::Value {
+        dashboard_state
+            .entities
+            .iter()
+            .find(|e| e.id.0 == entity_id)
+            .map(|e| {
+                let is_open = e.is_on;
+                let name = e.name.clone();
+                let status = if is_open { "Open" } else { "Closed" };
+                let action = if is_open { "Close" } else { "Open" };
+                let button_class = if is_open {
+                    "garage-btn garage-open"
+                } else {
+                    "garage-btn garage-closed"
+                };
+                serde_json::json!({
+                    "name": name,
+                    "status": status,
+                    "action": action,
+                    "button_class": button_class,
+                })
+            })
+            .unwrap_or_else(|| {
+                serde_json::json!({
+                    "name": default_name,
+                    "status": "Closed",
+                    "action": "Open",
+                    "button_class": "garage-btn garage-closed",
+                })
+            })
+    };
+
     tracing::debug!(
         solar_entity_id = cfg.solar_entity_id,
         solar_entity_value = ?dashboard_state
@@ -50,6 +82,8 @@ pub async fn get_solar(State(state): State<AppState>) -> AppResult<impl IntoResp
         "charger_car_connected": charger_state.car_connected,
         "charger_charging": charger_state.car_charging,
         "charger_paused": charger_state.paused,
+        "garage_left": make_garage_status(cfg.garage_left_status_entity_id.as_str(), "Garage Left"),
+        "garage_right": make_garage_status(cfg.garage_right_status_entity_id.as_str(), "Garage Right"),
     });
 
     Ok(Json(body))

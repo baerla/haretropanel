@@ -14,6 +14,9 @@ pub struct DemoHaClient {
     state: RwLock<DashboardState>,
     demo_energy_kwh: RwLock<f64>,
     last_energy_update: RwLock<std::time::SystemTime>,
+    // Maps action entity ID (e.g. "cover.garage_garagentor_links_bewegen")
+    // to the index of the status entity in the state entities vec.
+    garage_action_to_status: RwLock<std::collections::HashMap<String, usize>>,
 }
 
 impl DemoHaClient {
@@ -67,7 +70,7 @@ impl DemoHaClient {
         };
 
         let garage_left = Entity {
-            id: EntityId(config.garage_left_entity_id.clone()),
+            id: EntityId(config.garage_left_status_entity_id.clone()),
             name: "Garage Left".to_string(),
             kind: EntityKind::Cover,
             is_on: false,
@@ -75,7 +78,7 @@ impl DemoHaClient {
         };
 
         let garage_right = Entity {
-            id: EntityId(config.garage_right_entity_id.clone()),
+            id: EntityId(config.garage_right_status_entity_id.clone()),
             name: "Garage Right".to_string(),
             kind: EntityKind::Cover,
             is_on: true,
@@ -95,22 +98,66 @@ impl DemoHaClient {
             ],
         };
 
+        // Build action → status entity index mapping
+        let mut action_to_status = std::collections::HashMap::new();
+        if !config.garage_left_action_entity_id.is_empty()
+            && !config.garage_left_status_entity_id.is_empty()
+        {
+            // Find status entity index
+            if let Some(status_idx) = state
+                .entities
+                .iter()
+                .position(|e| e.id.0 == config.garage_left_status_entity_id)
+            {
+                action_to_status.insert(
+                    config.garage_left_action_entity_id.clone(),
+                    status_idx,
+                );
+            }
+        }
+        if !config.garage_right_action_entity_id.is_empty()
+            && !config.garage_right_status_entity_id.is_empty()
+        {
+            if let Some(status_idx) = state
+                .entities
+                .iter()
+                .position(|e| e.id.0 == config.garage_right_status_entity_id)
+            {
+                action_to_status.insert(
+                    config.garage_right_action_entity_id.clone(),
+                    status_idx,
+                );
+            }
+        }
+
         Arc::new(Self {
             state: RwLock::new(state),
             demo_energy_kwh: RwLock::new(0.8),
             last_energy_update: RwLock::new(std::time::SystemTime::now()),
+            garage_action_to_status: RwLock::new(action_to_status),
         })
     }
 
     async fn toggle_entity_state(&self, entity_id: &EntityId) {
         let mut state = self.state.write().await;
+        let mut toggled = false;
         for entity in &mut state.entities {
             if &entity.id == entity_id {
                 if entity.kind == EntityKind::Cover {
                     entity.is_on = !entity.is_on;
                     entity.value = Some(if entity.is_on { "open" } else { "closed" }.to_string());
                 }
+                toggled = true;
                 break;
+            }
+        }
+        // If not found directly, try mapping from action entity ID → status entity
+        if !toggled {
+            let mapping = self.garage_action_to_status.read().await;
+            if let Some(status_idx) = mapping.get(&entity_id.0) {
+                let entity = &mut state.entities[*status_idx];
+                entity.is_on = !entity.is_on;
+                entity.value = Some(if entity.is_on { "open" } else { "closed" }.to_string());
             }
         }
     }

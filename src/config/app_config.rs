@@ -20,8 +20,10 @@ pub struct AppConfig {
     pub goe_energy_entity_id: String,
     pub goe_car_connected_entity_id: String,
     pub goe_charging_entity_id: String,
-    pub garage_left_entity_id: String,
-    pub garage_right_entity_id: String,
+    pub garage_left_status_entity_id: String,
+    pub garage_left_action_entity_id: String,
+    pub garage_right_status_entity_id: String,
+    pub garage_right_action_entity_id: String,
     pub solar_max_watts: f64,
 
     // solar history
@@ -84,10 +86,14 @@ impl AppConfig {
             .unwrap_or_else(|_| "binary_sensor.goe_055063_car_0".to_string());
         let goe_charging_entity_id = env::var("HARETROPANEL_GOE_CHARGING_ENTITY_ID")
             .unwrap_or_else(|_| "binary_sensor.goe_055063_laden_0".to_string());
-        let garage_left_entity_id = env::var("HARETROPANEL_GARAGE_LEFT_ENTITY_ID")
-            .unwrap_or_else(|_| "cover.garage_left".to_string());
-        let garage_right_entity_id = env::var("HARETROPANEL_GARAGE_RIGHT_ENTITY_ID")
-            .unwrap_or_else(|_| "cover.garage_right".to_string());
+        let garage_left_status_entity_id = env::var("HARETROPANEL_GARAGE_LEFT_STATUS_ENTITY_ID")
+            .unwrap_or_else(|_| "binary_sensor.garage_garage_links_offen".to_string());
+        let garage_left_action_entity_id = env::var("HARETROPANEL_GARAGE_LEFT_ACTION_ENTITY_ID")
+            .unwrap_or_else(|_| "cover.garage_garagentor_links_bewegen".to_string());
+        let garage_right_status_entity_id = env::var("HARETROPANEL_GARAGE_RIGHT_STATUS_ENTITY_ID")
+            .unwrap_or_else(|_| "binary_sensor.garage_garage_rechts_offen".to_string());
+        let garage_right_action_entity_id = env::var("HARETROPANEL_GARAGE_RIGHT_ACTION_ENTITY_ID")
+            .unwrap_or_else(|_| "cover.garage_garagentor_rechts_bewegen".to_string());
         let solar_max_watts = env::var("HARETROPANEL_SOLAR_MAX_WATTS")
             .unwrap_or_else(|_| "9000".to_string())
             .parse()
@@ -176,8 +182,10 @@ impl AppConfig {
             goe_status_entity_id = ?goe_status_entity_id,
             goe_car_connected_entity_id = ?goe_car_connected_entity_id,
             goe_charging_entity_id = ?goe_charging_entity_id,
-            garage_left_entity_id = ?garage_left_entity_id,
-            garage_right_entity_id = ?garage_right_entity_id,
+            garage_left_status_entity_id = ?garage_left_status_entity_id,
+            garage_left_action_entity_id = ?garage_left_action_entity_id,
+            garage_right_status_entity_id = ?garage_right_status_entity_id,
+            garage_right_action_entity_id = ?garage_right_action_entity_id,
             "Config loaded"
         );
 
@@ -192,8 +200,10 @@ impl AppConfig {
             goe_energy_entity_id,
             goe_car_connected_entity_id,
             goe_charging_entity_id,
-            garage_left_entity_id,
-            garage_right_entity_id,
+            garage_left_status_entity_id,
+            garage_left_action_entity_id,
+            garage_right_status_entity_id,
+            garage_right_action_entity_id,
             solar_max_watts,
             solar_history_minutes,
             solar_sample_secs,

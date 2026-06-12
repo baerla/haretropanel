@@ -66,11 +66,11 @@ pub async fn get_dashboard(
     let garage_left_entity = dashboard_state
         .entities
         .iter()
-        .find(|e| e.id.0 == cfg.garage_left_entity_id);
+        .find(|e| e.id.0 == cfg.garage_left_status_entity_id);
     let garage_right_entity = dashboard_state
         .entities
         .iter()
-        .find(|e| e.id.0 == cfg.garage_right_entity_id);
+        .find(|e| e.id.0 == cfg.garage_right_status_entity_id);
 
     let solar_watts = state.dashboard_service.parse_solar_watts(&dashboard_state);
 
@@ -110,10 +110,7 @@ pub async fn get_dashboard(
         pill_paused: charger_state.paused,
     };
 
-    let make_garage_vm = |entity: Option<&crate::domain::Entity>, default_name: &str| {
-        let id = entity
-            .map(|e| e.id.0.clone())
-            .unwrap_or_else(|| default_name.to_string());
+    let make_garage_vm = |entity: Option<&crate::domain::Entity>, entity_id: &str, default_name: &str| {
         let name = entity
             .map(|e| e.name.clone())
             .unwrap_or_else(|| default_name.to_string());
@@ -127,7 +124,7 @@ pub async fn get_dashboard(
         };
 
         GarageDoorViewModel {
-            id,
+            id: entity_id.to_string(),
             name,
             status_label: status_label.to_string(),
             action_label: action_label.to_string(),
@@ -144,8 +141,10 @@ pub async fn get_dashboard(
         cfg.charger_current_entity_id.as_str(),
         cfg.goe_status_entity_id.as_str(),
         cfg.goe_car_connected_entity_id.as_str(),
-        cfg.garage_left_entity_id.as_str(),
-        cfg.garage_right_entity_id.as_str(),
+        cfg.garage_left_status_entity_id.as_str(),
+        cfg.garage_left_action_entity_id.as_str(),
+        cfg.garage_right_status_entity_id.as_str(),
+        cfg.garage_right_action_entity_id.as_str(),
     ]
     .into_iter()
     .collect();
@@ -188,8 +187,8 @@ pub async fn get_dashboard(
     let dashboard_vm = DashboardViewModel {
         solar: solar_vm,
         charger: charger_vm,
-        garage_left: make_garage_vm(garage_left_entity, "Garage Left"),
-        garage_right: make_garage_vm(garage_right_entity, "Garage Right"),
+        garage_left: make_garage_vm(garage_left_entity, cfg.garage_left_action_entity_id.as_str(), "Garage Left"),
+        garage_right: make_garage_vm(garage_right_entity, cfg.garage_right_action_entity_id.as_str(), "Garage Right"),
         demo_mode: cfg.demo_mode,
         last_updated: last_updated_label,
         page_tabs,
