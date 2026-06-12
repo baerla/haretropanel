@@ -113,10 +113,14 @@ pub async fn get_dashboard(
     let make_garage_vm = |entity: Option<&crate::domain::Entity>, entity_id: &str, default_name: &str| {
         let name = entity
             .map(|e| e.name.clone())
-            .unwrap_or_else(|| default_name.to_string());
+            .unwrap_or_else(|| default_name.to_string())
+            .strip_prefix("Garage")
+            .unwrap_or_else(|| default_name).to_string()
+            .strip_suffix("Offen")
+            .unwrap_or_else(|| default_name).to_string();
         let is_open = entity.map(|e| e.is_on).unwrap_or(false);
-        let status_label = if is_open { "Open" } else { "Closed" };
-        let action_label = if is_open { "Close" } else { "Open" };
+        let status_label = if is_open { "Offen" } else { "Geschlossen" };
+        let action_label = if is_open { "Schließen" } else { "Öffnen" };
         let button_class = if is_open {
             "garage-btn garage-open"
         } else {
