@@ -49,253 +49,22 @@
                     <canvas id="solarChart"></canvas>
                 </div>
             </div>
-            <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js"></script>
-            <script>
-                (function () {
-                    var ctx = document.getElementById('solarChart');
-                    if (!ctx || !window.Chart) {
-                        console.error('Chart.js not loaded or canvas not found');
-                        return;
-                    }
-                    var initialLabels = {{ dashboard.solar.chart_labels_js | safe }};
-                    var initialValues = {{ dashboard.solar.chart_values_js | safe }};
-                    var maxDataPoints = 60;
-
-                    var gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 260);
-                    gradient.addColorStop(0, 'rgba(100, 225, 255, 0.35)');
-                    gradient.addColorStop(1, 'rgba(100, 225, 255, 0.04)');
-
-                    var chart = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: initialLabels.slice(-maxDataPoints),
-                            datasets: [{
-                                data: initialValues.slice(-maxDataPoints),
-                                borderColor: 'rgba(110, 255, 204, 0.95)',
-                                backgroundColor: gradient,
-                                borderWidth: 2,
-                                pointRadius: 0,
-                                lineTension: 0.2
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            animation: { duration: 0 },
-                            legend: { display: false },
-                            tooltips: {
-                                intersect: false,
-                                mode: 'index',
-                                displayColors: false,
-                                callbacks: {
-                                    label: function(tooltipItem) {
-                                        return tooltipItem.yLabel + ' W';
-                                    }
-                                }
-                            },
-                            scales: {
-                                xAxes: [{
-                                    gridLines: { color: 'rgba(255,255,255,0.05)' },
-                                    ticks: { fontColor: '#8d96ab' }
-                                }],
-                                yAxes: [{
-                                    gridLines: { color: 'rgba(255,255,255,0.05)' },
-                                    ticks: { beginAtZero: true, fontColor: '#8d96ab' }
-                                }]
-                            }
-                        }
-                    });
-
-                    // Buffer temp chart
-                    var bufferCtx = document.getElementById('bufferChart');
-                    if (bufferCtx && window.Chart) {
-                        var bufferLabels = {{ dashboard.buffer_chart.chart_labels_js | safe }};
-                        var bufferTopVals = {{ dashboard.buffer_chart.chart_buffer_top_js | safe }};
-                        var bufferBottomVals = {{ dashboard.buffer_chart.chart_buffer_bottom_js | safe }};
-                        var solarFlowVals = {{ dashboard.buffer_chart.chart_solar_flow_js | safe }};
-                        var solarReturnVals = {{ dashboard.buffer_chart.chart_solar_return_js | safe }};
-
-                        var bufferChart = new Chart(bufferCtx.getContext('2d'), {
-                            type: 'line',
-                            data: {
-                                labels: bufferLabels.slice(-maxDataPoints),
-                                datasets: [
-                                    {
-                                        label: 'Buffer Top',
-                                        data: bufferTopVals.slice(-maxDataPoints),
-                                        borderColor: 'rgba(255, 99, 132, 0.9)',
-                                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
-                                        borderWidth: 1.5,
-                                        pointRadius: 0,
-                                        lineTension: 0.1
-                                    },
-                                    {
-                                        label: 'Buffer Bottom',
-                                        data: bufferBottomVals.slice(-maxDataPoints),
-                                        borderColor: 'rgba(255, 159, 64, 0.9)',
-                                        backgroundColor: 'rgba(255, 159, 64, 0.1)',
-                                        borderWidth: 1.5,
-                                        pointRadius: 0,
-                                        lineTension: 0.1
-                                    },
-                                    {
-                                        label: 'Solar Flow',
-                                        data: solarFlowVals.slice(-maxDataPoints),
-                                        borderColor: 'rgba(255, 205, 86, 0.9)',
-                                        backgroundColor: 'rgba(255, 205, 86, 0.1)',
-                                        borderWidth: 1.5,
-                                        pointRadius: 0,
-                                        lineTension: 0.1
-                                    },
-                                    {
-                                        label: 'Solar Return',
-                                        data: solarReturnVals.slice(-maxDataPoints),
-                                        borderColor: 'rgba(54, 162, 235, 0.9)',
-                                        backgroundColor: 'rgba(54, 162, 235, 0.1)',
-                                        borderWidth: 1.5,
-                                        pointRadius: 0,
-                                        lineTension: 0.1
-                                    }
-                                ]
-                            },
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                animation: { duration: 0 },
-                                legend: { display: true, labels: { fontColor: '#8d96ab', boxWidth: 12 } },
-                                tooltips: { intersect: false, mode: 'index', displayColors: false },
-                                scales: {
-                                    xAxes: [{
-                                        gridLines: { color: 'rgba(255,255,255,0.05)' },
-                                        ticks: { fontColor: '#8d96ab', maxTicksLimit: 8 }
-                                    }],
-                                    yAxes: [{
-                                        gridLines: { color: 'rgba(255,255,255,0.05)' },
-                                        ticks: { fontColor: '#8d96ab' }
-                                    }]
-                                }
-                            }
-                        });
-                        console.log('Buffer chart initialized');
-                    }
-
-                    console.log('Solar polling started');
-
-                    function updateSolarData() {
-                        fetch('/api/solar', { cache: 'no-cache' })
-                            .then(function(res) { return res.json(); })
-                            .then(function(data) {
-                                console.log('Solar data updated:', data.watts, 'W');
-
-                                // Update current output stat
-                                var wattsEl = document.querySelector('.stat:first-child .stat-value');
-                                if (wattsEl) wattsEl.textContent = Math.round(data.watts) + ' W';
-
-                                // Update chart
-                                if (data.chart_labels && data.chart_values) {
-                                    chart.data.labels = data.chart_labels.slice(-maxDataPoints);
-                                    chart.data.datasets[0].data = data.chart_values.slice(-maxDataPoints);
-                                    chart.update();
-                                }
-
-                                // Update charger section
-                                if (data.charger_amps !== undefined) {
-                                    var ampsEl = document.querySelector('.charger-reading');
-                                    if (ampsEl) ampsEl.textContent = data.charger_amps;
-                                }
-                                if (data.charger_status !== undefined) {
-                                    var statusEl = document.querySelector('.charger-status');
-                                    if (statusEl) statusEl.textContent = data.charger_status;
-                                }
-                                if (data.charger_car_state !== undefined) {
-                                    var carEl = document.querySelector('.charger-car-state');
-                                    if (carEl) {
-                                        carEl.textContent = data.charger_car_state;
-                                        carEl.className = 'charger-car-state ' + data.charger_car_state_class;
-                                    }
-                                }
-                                if (data.charger_car_connected !== undefined) {
-                                    var pillEl = document.querySelector('.charger-pill');
-                                    if (pillEl) {
-                                        if (data.charger_paused) {
-                                            pillEl.textContent = 'PAUSIERT';
-                                            pillEl.className = 'charger-pill charger-pill-paused';
-                                        } else if (data.charger_charging) {
-                                            pillEl.textContent = 'Am Laden';
-                                            pillEl.className = 'charger-pill charger-pill-charging';
-                                        } else if (data.charger_car_connected) {
-                                            pillEl.textContent = 'Angeschlossen';
-                                            pillEl.className = 'charger-pill';
-                                        } else {
-                                            pillEl.textContent = 'Nicht angeschlossen';
-                                            pillEl.className = 'charger-pill charger-pill-disconnected';
-                                        }
-                                    }
-                                }
-                                if (data.garage_left) {
-                                    updateGarage(data.garage_left, 'left');
-                                }
-                                if (data.garage_right) {
-                                    updateGarage(data.garage_right, 'right');
-                                }
-
-                                // Update buffer temp chart
-                                if (data.buffer_temps) {
-                                    if (bufferChart && data.buffer_temps.labels) {
-                                        bufferChart.data.labels = data.buffer_temps.labels.slice(-maxDataPoints);
-                                        bufferChart.data.datasets[0].data = (data.buffer_temps.buffer_top || []).slice(-maxDataPoints);
-                                        bufferChart.data.datasets[1].data = (data.buffer_temps.buffer_bottom || []).slice(-maxDataPoints);
-                                        bufferChart.data.datasets[2].data = (data.buffer_temps.solar_flow || []).slice(-maxDataPoints);
-                                        bufferChart.data.datasets[3].data = (data.buffer_temps.solar_return || []).slice(-maxDataPoints);
-                                        bufferChart.update();
-                                    }
-                                }
-
-                                // Update pump tile
-                                if (data.pump_status) {
-                                    var tileEl = document.getElementById('pump-tile');
-                                    if (tileEl) {
-                                        tileEl.className = 'pump-tile ' + data.pump_status.css_class;
-                                    }
-                                    var pumpStateEl = document.getElementById('pump-state');
-                                    if (pumpStateEl) pumpStateEl.textContent = data.pump_status.status_label;
-                                    var pumpInfoEl = document.getElementById('pump-info');
-                                    if (pumpInfoEl) {
-                                        if (data.pump_status.pump_on) {
-                                            pumpInfoEl.innerHTML = data.pump_status.is_correct ? '✅ Heat flowing into buffer' : '❌ No heat transfer';
-                                        } else {
-                                            pumpInfoEl.innerHTML = data.pump_status.is_correct ? '✅ Normal operation' : '❌ Should be running';
-                                        }
-                                    }
-                                }
-
-                                // Update last updated timestamp
-                                var lastUpdatedEl = document.querySelector('.last-updated');
-                                if (lastUpdatedEl) {
-                                    lastUpdatedEl.textContent = 'Letztes Update: ' + new Date(Date.now()).toLocaleString("de-DE");
-                                }
-                            })
-                            .catch(function(err) { console.error('Solar poll failed:', err); });
-                    }
-
-                    function updateGarage(data, side) {
-                        var wrapper = document.getElementById('garage-' + side + '-wrapper');
-                        if (!wrapper) return;
-                        var statusEl = wrapper.querySelector('.status');
-                        var actionEl = wrapper.querySelector('.action');
-                        var btnEl = wrapper.querySelector('.garage-btn');
-                        if (statusEl) statusEl.textContent = data.status;
-                        if (actionEl) actionEl.textContent = data.action;
-                        if (btnEl) btnEl.setAttribute('class', data.button_class);
-                    }
-
-                    // Poll every 10 seconds
-                    setInterval(updateSolarData, 10000);
-                })();
-            </script>
         </section>
 
-        <section class="panel buffer-temp-panel">
+        <section class="panel charger-panel">
+            <div class="panel-header">
+                <div class="panel-title">Go-E Charger</div>
+                <div class="panel-meta">Status</div>
+            </div>
+            <div class="charger-body">
+                <div class="charger-meta">Ladestrom aktuell</div>
+                <div class="charger-reading">{{ dashboard.charger.amps_label }}</div>
+                <div class="charger-status">{{ dashboard.charger.status_label }}</div>
+                <div class="charger-car-state {{ dashboard.charger.car_state_class }}">{{ dashboard.charger.car_state_label }}</div>
+            </div>
+        </section>
+
+        <section class="panel buffer-temp-panel panel-extra-wide">
             <div class="panel-header">
                 <div class="panel-title">Pufferspeicher Temperaturen</div>
                 <div class="panel-meta">Live</div>
@@ -319,19 +88,6 @@
 
             <div class="buffer-temp-chart">
                 <canvas id="bufferChart"></canvas>
-            </div>
-        </section>
-
-        <section class="panel charger-panel">
-            <div class="panel-header">
-                <div class="panel-title">Go-E Charger</div>
-                <div class="panel-meta">Status</div>
-            </div>
-            <div class="charger-body">
-                <div class="charger-meta">Ladestrom aktuell</div>
-                <div class="charger-reading">{{ dashboard.charger.amps_label }}</div>
-                <div class="charger-status">{{ dashboard.charger.status_label }}</div>
-                <div class="charger-car-state {{ dashboard.charger.car_state_class }}">{{ dashboard.charger.car_state_label }}</div>
             </div>
         </section>
     </div>
@@ -442,5 +198,254 @@
     </section>
     {% endif %}
     {% endfor %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js"></script>
+    <script>
+        (function () {
+            var ctx = document.getElementById('solarChart');
+            if (!ctx || !window.Chart) {
+                console.error('Chart.js not loaded or canvas not found');
+                return;
+            }
+            var initialLabels = {{ dashboard.solar.chart_labels_js | safe }};
+            var initialValues = {{ dashboard.solar.chart_values_js | safe }};
+            var maxDataPoints = 60;
+
+            var gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 260);
+            gradient.addColorStop(0, 'rgba(100, 225, 255, 0.35)');
+            gradient.addColorStop(1, 'rgba(100, 225, 255, 0.04)');
+
+            var chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: initialLabels.slice(-maxDataPoints),
+                    datasets: [{
+                        data: initialValues.slice(-maxDataPoints),
+                        borderColor: 'rgba(110, 255, 204, 0.95)',
+                        backgroundColor: gradient,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        lineTension: 0.2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 0 },
+                    legend: { display: false },
+                    tooltips: {
+                        intersect: false,
+                        mode: 'index',
+                        displayColors: false,
+                        callbacks: {
+                            label: function(tooltipItem) {
+                                return tooltipItem.yLabel + ' W';
+                            }
+                        }
+                    },
+                    scales: {
+                        xAxes: [{
+                            gridLines: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { fontColor: '#8d96ab' }
+                        }],
+                        yAxes: [{
+                            gridLines: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { beginAtZero: true, fontColor: '#8d96ab' }
+                        }]
+                    }
+                }
+            });
+
+            // Buffer temp chart
+            var bufferCtx = document.getElementById('bufferChart');
+            if (!bufferCtx) {
+                console.error('Buffer canvas not found');
+                return;
+            }
+
+            var bufferLabels = {{ dashboard.buffer_chart.chart_labels_js | safe }};
+            var bufferTopVals = {{ dashboard.buffer_chart.chart_buffer_top_js | safe }};
+            var bufferBottomVals = {{ dashboard.buffer_chart.chart_buffer_bottom_js | safe }};
+            var solarFlowVals = {{ dashboard.buffer_chart.chart_solar_flow_js | safe }};
+            var solarReturnVals = {{ dashboard.buffer_chart.chart_solar_return_js | safe }};
+
+            var bufferContext = bufferCtx.getContext('2d');
+            var bufferGradient = bufferContext.createLinearGradient(0, 0, 0, 260);
+            bufferGradient.addColorStop(0, 'rgba(100, 225, 255, 0.35)');
+            bufferGradient.addColorStop(1, 'rgba(100, 225, 255, 0.04)');
+
+            var bufferChart = new Chart(bufferContext, {
+                type: 'line',
+                data: {
+                    labels: bufferLabels.slice(-maxDataPoints),
+                    datasets: [
+                        {
+                            label: 'Buffer Top',
+                            data: bufferTopVals.slice(-maxDataPoints),
+                            borderColor: 'rgba(255, 99, 132, 0.9)',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            lineTension: 0.1
+                        },
+                        {
+                            label: 'Buffer Bottom',
+                            data: bufferBottomVals.slice(-maxDataPoints),
+                            borderColor: 'rgba(255, 159, 64, 0.9)',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            lineTension: 0.1
+                        },
+                        {
+                            label: 'Solar Flow',
+                            data: solarFlowVals.slice(-maxDataPoints),
+                            borderColor: 'rgba(255, 205, 86, 0.9)',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            lineTension: 0.1
+                        },
+                        {
+                            label: 'Solar Return',
+                            data: solarReturnVals.slice(-maxDataPoints),
+                            borderColor: 'rgba(54, 162, 235, 0.9)',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            lineTension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 0 },
+                    legend: { display: true, labels: { fontColor: '#8d96ab', boxWidth: 12 } },
+                    tooltips: { intersect: false, mode: 'index', displayColors: false },
+                    scales: {
+                        xAxes: [{
+                            gridLines: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { fontColor: '#8d96ab', maxTicksLimit: 8 }
+                        }],
+                        yAxes: [{
+                            gridLines: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { fontColor: '#8d96ab' }
+                        }]
+                    }
+                }
+            });
+            console.log('Buffer chart initialized');
+        
+
+            console.log('Solar polling started');
+
+            function updateSolarData() {
+                fetch('/api/solar', { cache: 'no-cache' })
+                    .then(function(res) { return res.json(); })
+                    .then(function(data) {
+                        console.log('Solar data updated:', data.watts, 'W');
+
+                        // Update current output stat
+                        var wattsEl = document.querySelector('.stat:first-child .stat-value');
+                        if (wattsEl) wattsEl.textContent = Math.round(data.watts) + ' W';
+
+                        // Update chart
+                        if (data.chart_labels && data.chart_values) {
+                            chart.data.labels = data.chart_labels.slice(-maxDataPoints);
+                            chart.data.datasets[0].data = data.chart_values.slice(-maxDataPoints);
+                            chart.update();
+                        }
+
+                        // Update charger section
+                        if (data.charger_amps !== undefined) {
+                            var ampsEl = document.querySelector('.charger-reading');
+                            if (ampsEl) ampsEl.textContent = data.charger_amps;
+                        }
+                        if (data.charger_status !== undefined) {
+                            var statusEl = document.querySelector('.charger-status');
+                            if (statusEl) statusEl.textContent = data.charger_status;
+                        }
+                        if (data.charger_car_state !== undefined) {
+                            var carEl = document.querySelector('.charger-car-state');
+                            if (carEl) {
+                                carEl.textContent = data.charger_car_state;
+                                carEl.className = 'charger-car-state ' + data.charger_car_state_class;
+                            }
+                        }
+                        if (data.charger_car_connected !== undefined) {
+                            var pillEl = document.querySelector('.charger-pill');
+                            if (pillEl) {
+                                if (data.charger_paused) {
+                                    pillEl.textContent = 'PAUSIERT';
+                                    pillEl.className = 'charger-pill charger-pill-paused';
+                                } else if (data.charger_charging) {
+                                    pillEl.textContent = 'Am Laden';
+                                    pillEl.className = 'charger-pill charger-pill-charging';
+                                } else if (data.charger_car_connected) {
+                                    pillEl.textContent = 'Angeschlossen';
+                                    pillEl.className = 'charger-pill';
+                                } else {
+                                    pillEl.textContent = 'Nicht angeschlossen';
+                                    pillEl.className = 'charger-pill charger-pill-disconnected';
+                                }
+                            }
+                        }
+                        if (data.garage_left) {
+                            updateGarage(data.garage_left, 'left');
+                        }
+                        if (data.garage_right) {
+                            updateGarage(data.garage_right, 'right');
+                        }
+
+                        // Update buffer temp chart
+                        if (data.buffer_temps) {
+                            if (bufferChart && data.buffer_temps.labels) {
+                                bufferChart.data.labels = data.buffer_temps.labels.slice(-maxDataPoints);
+                                bufferChart.data.datasets[0].data = (data.buffer_temps.buffer_top || []).slice(-maxDataPoints);
+                                bufferChart.data.datasets[1].data = (data.buffer_temps.buffer_bottom || []).slice(-maxDataPoints);
+                                bufferChart.data.datasets[2].data = (data.buffer_temps.solar_flow || []).slice(-maxDataPoints);
+                                bufferChart.data.datasets[3].data = (data.buffer_temps.solar_return || []).slice(-maxDataPoints);
+                                bufferChart.update();
+                            }
+                        }
+
+                        // Update pump tile
+                        if (data.pump_status) {
+                            var tileEl = document.getElementById('pump-tile');
+                            if (tileEl) {
+                                tileEl.className = 'pump-tile ' + data.pump_status.css_class;
+                            }
+                            var pumpStateEl = document.getElementById('pump-state');
+                            if (pumpStateEl) pumpStateEl.textContent = data.pump_status.status_label;
+                            var pumpInfoEl = document.getElementById('pump-info');
+                            if (pumpInfoEl) {
+                                if (data.pump_status.pump_on) {
+                                    pumpInfoEl.innerHTML = data.pump_status.is_correct ? '✅ Heat flowing into buffer' : '❌ No heat transfer';
+                                } else {
+                                    pumpInfoEl.innerHTML = data.pump_status.is_correct ? '✅ Normal operation' : '❌ Should be running';
+                                }
+                            }
+                        }
+
+                        // Update last updated timestamp
+                        var lastUpdatedEl = document.querySelector('.last-updated');
+                        if (lastUpdatedEl) {
+                            lastUpdatedEl.textContent = 'Letztes Update: ' + new Date(Date.now()).toLocaleString("de-DE");
+                        }
+                    })
+                    .catch(function(err) { console.error('Solar poll failed:', err); });
+            }
+
+            function updateGarage(data, side) {
+                var wrapper = document.getElementById('garage-' + side + '-wrapper');
+                if (!wrapper) return;
+                var statusEl = wrapper.querySelector('.status');
+                var actionEl = wrapper.querySelector('.action');
+                var btnEl = wrapper.querySelector('.garage-btn');
+                if (statusEl) statusEl.textContent = data.status;
+                if (actionEl) actionEl.textContent = data.action;
+                if (btnEl) btnEl.setAttribute('class', data.button_class);
+            }
+
+            // Poll every 10 seconds
+            setInterval(updateSolarData, 10000);
+        })();
+    </script>
 </div>
 {% endblock %}

@@ -427,6 +427,11 @@ impl DashboardService {
             cfg.goe_charging_entity_id.clone(),
             cfg.garage_left_status_entity_id.clone(),
             cfg.garage_right_status_entity_id.clone(),
+            cfg.solar_buffer_bottom_entity_id.clone(),
+            cfg.solar_buffer_top_entity_id.clone(),
+            cfg.solar_flow_entity_id.clone(),
+            cfg.solar_return_entity_id.clone(),
+            cfg.solar_pump_entity_id.clone(),
         ]
         .into_iter()
         .collect();
@@ -508,16 +513,24 @@ impl DashboardService {
             solar_return: parse(solar_return),
         };
 
+        let max_age = Duration::from_secs(self.config.solar_history_minutes * 60);
         if let Ok(mut history) = self.buffer_temp_history.try_write() {
             history.push_back(sample);
-            while history.len() > 60 {
-                history.pop_front();
+            while let Some(el) = history.iter().next() {
+                if SystemTime::now()
+                    .duration_since(el.timestamp)
+                    .unwrap_or(Duration::ZERO)
+                    > max_age
+                {
+                    history.pop_front();
+                } else {
+                    break;
+                }
             }
         }
     }
 
     pub async fn compute_buffer_temp_chart(&self) -> BufferTempChartPoints {
-        tokio::task::block_in_place(|| {
             let history = self.buffer_temp_history.try_read();
             match history {
                 Ok(h) => {
@@ -574,7 +587,6 @@ impl DashboardService {
                     solar_return: vec![],
                 },
             }
-        })
     }
 
     pub fn compute_pump_status(&self, state: &DashboardState) -> PumpViewModel {
