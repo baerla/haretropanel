@@ -68,6 +68,15 @@ pub struct SolarChartPoints {
     pub values: Vec<f64>,
 }
 
+#[derive(Debug, Clone)]
+pub struct BufferTempChartPoints {
+    pub labels: Vec<String>,
+    pub buffer_top: Vec<f64>,
+    pub buffer_bottom: Vec<f64>,
+    pub solar_flow: Vec<f64>,
+    pub solar_return: Vec<f64>,
+}
+
 pub struct SolarViewModel {
     pub watts_label: String,
     pub max_watts_label: String,
@@ -85,6 +94,23 @@ pub struct ChargerViewModel {
     pub pill_paused: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct BufferTempViewModel {
+    pub chart_labels_js: String,
+    pub chart_buffer_top_js: String,
+    pub chart_buffer_bottom_js: String,
+    pub chart_solar_flow_js: String,
+    pub chart_solar_return_js: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct PumpViewModel {
+    pub pump_on: bool,
+    pub is_correct: bool,
+    pub status_label: String,
+    pub css_class: String,
+}
+
 pub struct GarageDoorViewModel {
     pub id: String,
     pub name: String,
@@ -98,6 +124,8 @@ pub struct DashboardViewModel {
     pub charger: ChargerViewModel,
     pub garage_left: GarageDoorViewModel,
     pub garage_right: GarageDoorViewModel,
+    pub buffer_chart: BufferTempViewModel,
+    pub pump_status: PumpViewModel,
     pub demo_mode: bool,
     pub last_updated: String,
     pub page_tabs: Vec<String>,

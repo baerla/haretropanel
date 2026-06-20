@@ -11,8 +11,8 @@ use crate::{
     domain::EntityId,
     infrastructure::web::{
         viewmodels::{
-            ChargerViewModel, DashboardTemplate, DashboardViewModel, GarageDoorViewModel,
-            SolarViewModel,
+            BufferTempViewModel, ChargerViewModel, DashboardTemplate,
+            DashboardViewModel, GarageDoorViewModel, PumpViewModel, SolarViewModel,
         },
         AppState,
     },
@@ -83,6 +83,17 @@ pub async fn get_dashboard(
     let chart_points = state.dashboard_service.compute_solar_chart().await;
     let chart_labels: Vec<String> = chart_points.labels;
     let chart_values: Vec<f64> = chart_points.values;
+
+    // Buffer temp chart data
+    let buffer_chart_points = state.dashboard_service.compute_buffer_temp_chart().await;
+    let buffer_labels: Vec<String> = buffer_chart_points.labels;
+    let buffer_top: Vec<f64> = buffer_chart_points.buffer_top;
+    let buffer_bottom: Vec<f64> = buffer_chart_points.buffer_bottom;
+    let solar_flow: Vec<f64> = buffer_chart_points.solar_flow;
+    let solar_return: Vec<f64> = buffer_chart_points.solar_return;
+
+    // Pump status
+    let pump_vm = state.dashboard_service.compute_pump_status(&dashboard_state);
 
     let solar_vm = SolarViewModel {
         watts_label: format!("{:.0} W", solar_watts),
@@ -193,6 +204,19 @@ pub async fn get_dashboard(
         charger: charger_vm,
         garage_left: make_garage_vm(garage_left_entity, cfg.garage_left_action_entity_id.as_str(), "Garage Left"),
         garage_right: make_garage_vm(garage_right_entity, cfg.garage_right_action_entity_id.as_str(), "Garage Right"),
+        buffer_chart: BufferTempViewModel {
+            chart_labels_js: format!("[{}]", buffer_labels.iter().map(|l| format!("\"{}\"", l)).collect::<Vec<_>>().join(",")),
+            chart_buffer_top_js: format!("[{}]", buffer_top.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(",")),
+            chart_buffer_bottom_js: format!("[{}]", buffer_bottom.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(",")),
+            chart_solar_flow_js: format!("[{}]", solar_flow.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(",")),
+            chart_solar_return_js: format!("[{}]", solar_return.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(",")),
+        },
+        pump_status: PumpViewModel {
+            pump_on: pump_vm.pump_on,
+            is_correct: pump_vm.is_correct,
+            status_label: pump_vm.status_label,
+            css_class: pump_vm.css_class,
+        },
         demo_mode: cfg.demo_mode,
         last_updated: last_updated_label,
         page_tabs,

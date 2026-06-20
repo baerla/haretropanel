@@ -365,6 +365,73 @@
             filter: brightness(1.05);
         }
 
+        .pump-tile {
+            grid-column: 1 / -1;
+            padding: 16px 20px;
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .pump-tile h3 {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #9bb0d3;
+            margin: 0;
+        }
+
+        .pump-state {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .pump-on {
+            background: rgba(94, 190, 130, 0.15);
+            border: 1px solid rgba(94, 190, 130, 0.4);
+        }
+
+        .pump-on .pump-state {
+            color: var(--success);
+        }
+
+        .pump-off {
+            background: rgba(141, 150, 171, 0.1);
+            border: 1px solid rgba(141, 150, 171, 0.2);
+        }
+
+        .pump-off .pump-state {
+            color: var(--muted);
+        }
+
+        .pump-wrong {
+            background: rgba(235, 112, 112, 0.15);
+            border: 1px solid rgba(235, 112, 112, 0.4);
+        }
+
+        .pump-wrong .pump-state {
+            color: var(--danger);
+        }
+
+        .buffer-temp-panel .panel-header {
+            margin-bottom: 14px;
+        }
+
+        .buffer-temp-chart {
+            height: 220px;
+            background: rgba(15, 20, 30, 0.6);
+            border-radius: 18px;
+            border: 1px solid rgba(100, 180, 255, 0.1);
+            padding: 10px 12px;
+            margin-top: 14px;
+        }
+
+        .buffer-temp-chart canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
         @media (max-width: 900px) {
             .container {
                 padding: 16px;

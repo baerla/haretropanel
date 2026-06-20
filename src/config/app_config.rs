@@ -15,6 +15,11 @@ pub struct AppConfig {
 
     // entity ids for the dashboard
     pub solar_entity_id: String,
+    pub solar_buffer_top_entity_id: String,
+    pub solar_buffer_bottom_entity_id: String,
+    pub solar_flow_entity_id: String,
+    pub solar_return_entity_id: String,
+    pub solar_pump_entity_id: String,
     pub charger_current_entity_id: String,
     pub goe_status_entity_id: String,
     pub goe_energy_entity_id: String,
@@ -76,6 +81,16 @@ impl AppConfig {
 
         let solar_entity_id = env::var("HARETROPANEL_SOLAR_ENTITY_ID")
             .unwrap_or_else(|_| "sensor.solar_power".to_string());
+        let solar_buffer_top_entity_id =
+            env::var("HARETROPANEL_SOLAR_BUFFER_TOP_ENTITY_ID").unwrap_or_default();
+        let solar_buffer_bottom_entity_id =
+            env::var("HARETROPANEL_SOLAR_BUFFER_BOTTOM_ENTITY_ID").unwrap_or_default();
+        let solar_flow_entity_id =
+            env::var("HARETROPANEL_SOLAR_FLOW_ENTITY_ID").unwrap_or_default();
+        let solar_return_entity_id =
+            env::var("HARETROPANEL_SOLAR_RETURN_ENTITY_ID").unwrap_or_default();
+        let solar_pump_entity_id =
+            env::var("HARETROPANEL_SOLAR_PUMP_ENTITY_ID").unwrap_or_default();
         let charger_current_entity_id = env::var("HARETROPANEL_CHARGER_CURRENT_ENTITY_ID")
             .unwrap_or_else(|_| "sensor.goe_055063_nrg_11".to_string());
         let goe_status_entity_id = env::var("HARETROPANEL_GOE_STATUS_ENTITY_ID")
@@ -195,6 +210,11 @@ impl AppConfig {
             ha_token,
             demo_mode,
             solar_entity_id,
+            solar_buffer_top_entity_id,
+            solar_buffer_bottom_entity_id,
+            solar_flow_entity_id,
+            solar_return_entity_id,
+            solar_pump_entity_id,
             charger_current_entity_id,
             goe_status_entity_id,
             goe_energy_entity_id,

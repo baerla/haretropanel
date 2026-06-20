@@ -53,6 +53,11 @@ fn test_config() -> AppConfig {
     AppConfig {
         demo_mode: false,
         solar_entity_id: "sensor.solar".into(),
+        solar_buffer_top_entity_id: String::new(),
+        solar_buffer_bottom_entity_id: String::new(),
+        solar_flow_entity_id: String::new(),
+        solar_return_entity_id: String::new(),
+        solar_pump_entity_id: String::new(),
         charger_current_entity_id: String::new(),
         goe_status_entity_id: String::new(),
         goe_energy_entity_id: String::new(),

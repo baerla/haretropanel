@@ -37,6 +37,46 @@ impl DemoHaClient {
             value: Some("7800 W".to_string()),
         };
 
+        let buffer_top = Entity {
+            id: EntityId(config.solar_buffer_top_entity_id.clone()),
+            name: "Buffer Top".to_string(),
+            kind: EntityKind::Sensor,
+            is_on: false,
+            value: Some("55.2 °C".to_string()),
+        };
+
+        let buffer_bottom = Entity {
+            id: EntityId(config.solar_buffer_bottom_entity_id.clone()),
+            name: "Buffer Bottom".to_string(),
+            kind: EntityKind::Sensor,
+            is_on: false,
+            value: Some("48.5 °C".to_string()),
+        };
+
+        let solar_flow = Entity {
+            id: EntityId(config.solar_flow_entity_id.clone()),
+            name: "Solar Flow Pre-Panel".to_string(),
+            kind: EntityKind::Sensor,
+            is_on: false,
+            value: Some("52.0 °C".to_string()),
+        };
+
+        let solar_return = Entity {
+            id: EntityId(config.solar_return_entity_id.clone()),
+            name: "Solar Return".to_string(),
+            kind: EntityKind::Sensor,
+            is_on: false,
+            value: Some("45.0 °C".to_string()),
+        };
+
+        let solar_pump = Entity {
+            id: EntityId(config.solar_pump_entity_id.clone()),
+            name: "Solar Pump".to_string(),
+            kind: EntityKind::Sensor,
+            is_on: false,
+            value: Some("on".to_string()),
+        };
+
         let charger = Entity {
             id: EntityId(config.charger_current_entity_id.clone()),
             name: "Go-E Charger Current".to_string(),
@@ -89,6 +129,11 @@ impl DemoHaClient {
             entities: vec![
                 solar,
                 solar_peak,
+                buffer_top,
+                buffer_bottom,
+                solar_flow,
+                solar_return,
+                solar_pump,
                 charger,
                 goe_status,
                 goe_energy,

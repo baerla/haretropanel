@@ -21,6 +21,14 @@ pub async fn get_solar(State(state): State<AppState>) -> AppResult<impl IntoResp
 
     let charger_state = state.dashboard_service.compute_car_state(&dashboard_state).await;
 
+    let buffer_chart_points = state.dashboard_service.compute_buffer_temp_chart().await;
+    let buffer_labels = buffer_chart_points.labels;
+    let buffer_top_vals: Vec<String> = buffer_chart_points.buffer_top.iter().map(|v| format!("{:.1}", v)).collect();
+    let buffer_bottom_vals: Vec<String> = buffer_chart_points.buffer_bottom.iter().map(|v| format!("{:.1}", v)).collect();
+    let solar_flow_vals: Vec<String> = buffer_chart_points.solar_flow.iter().map(|v| format!("{:.1}", v)).collect();
+    let solar_return_vals: Vec<String> = buffer_chart_points.solar_return.iter().map(|v| format!("{:.1}", v)).collect();
+    let pump_status = state.dashboard_service.compute_pump_status(&dashboard_state);
+
     let make_garage_status = |entity_id: &str, default_name: &str| -> serde_json::Value {
         dashboard_state
             .entities
@@ -65,7 +73,7 @@ pub async fn get_solar(State(state): State<AppState>) -> AppResult<impl IntoResp
         "Solar data fetched"
     );
 
-    let body = serde_json::json!({
+    Ok(Json(serde_json::json!({
         "watts": solar_watts,
         "max_watts": cfg.solar_max_watts,
         "percent": if cfg.solar_max_watts > 0.0 {
@@ -84,7 +92,18 @@ pub async fn get_solar(State(state): State<AppState>) -> AppResult<impl IntoResp
         "charger_paused": charger_state.paused,
         "garage_left": make_garage_status(cfg.garage_left_status_entity_id.as_str(), "Garage Left"),
         "garage_right": make_garage_status(cfg.garage_right_status_entity_id.as_str(), "Garage Right"),
-    });
-
-    Ok(Json(body))
+        "buffer_temps": {
+            "labels": buffer_labels,
+            "buffer_top": buffer_top_vals,
+            "buffer_bottom": buffer_bottom_vals,
+            "solar_flow": solar_flow_vals,
+            "solar_return": solar_return_vals,
+        },
+        "pump_status": {
+            "pump_on": pump_status.pump_on,
+            "is_correct": pump_status.is_correct,
+            "status_label": pump_status.status_label,
+            "css_class": pump_status.css_class,
+        },
+    })))
 }

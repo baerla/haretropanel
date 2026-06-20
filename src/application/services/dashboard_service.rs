@@ -11,8 +11,8 @@ use tokio::sync::RwLock;
 
 use crate::{
     application::ports::HomeAssistantClient,
-    domain::{DashboardState, EntityId, EntityKind},
-    infrastructure::web::viewmodels::{ChargerState, SolarChartPoints},
+    domain::{DashboardState, Entity, EntityId, EntityKind},
+    infrastructure::web::viewmodels::{BufferTempChartPoints, ChargerState, PumpViewModel, SolarChartPoints},
     shared::error::AppResult,
 };
 
@@ -47,6 +47,22 @@ struct SolarSample {
 }
 
 #[derive(Clone, Debug)]
+struct BufferTempSample {
+    timestamp: SystemTime,
+    buffer_top: f64,
+    buffer_bottom: f64,
+    solar_flow: f64,
+    solar_return: f64,
+}
+
+#[derive(Clone, Debug)]
+struct PumpSample {
+    timestamp: SystemTime,
+    pump_on: bool,
+    is_correct: bool,
+}
+
+#[derive(Clone, Debug)]
 struct GoeEnergyTracker {
     last_value: Option<f64>,
     last_change: Option<Instant>,
@@ -58,6 +74,8 @@ pub struct DashboardService {
     cache_config: DashboardCacheConfig,
     state_cache: RwLock<Option<CachedDashboardState>>,
     solar_history: RwLock<VecDeque<SolarSample>>,
+    buffer_temp_history: RwLock<VecDeque<BufferTempSample>>,
+    pump_history: RwLock<VecDeque<PumpSample>>,
     goe_energy_tracker: RwLock<GoeEnergyTracker>,
     config: crate::config::AppConfig,
 }
@@ -75,6 +93,8 @@ impl DashboardService {
             cache_config,
             state_cache: RwLock::new(None),
             solar_history: RwLock::new(VecDeque::new()),
+            buffer_temp_history: RwLock::new(VecDeque::new()),
+            pump_history: RwLock::new(VecDeque::new()),
             goe_energy_tracker: RwLock::new(GoeEnergyTracker {
                 last_value: None,
                 last_change: None,
@@ -168,6 +188,8 @@ impl DashboardService {
                 }
             }
         }
+
+        self.record_buffer_temps(&fresh);
 
         if let Some(goe_energy) = fresh
             .entities
@@ -461,6 +483,152 @@ impl DashboardService {
         tracing::debug!(entity_id = %id, "Script executed successfully, invalidating cache");
         self.invalidate_cache().await;
         Ok(())
+    }
+
+    fn record_buffer_temps(&self, state: &DashboardState) {
+        let cfg = self.config();
+        let find = |id: &str| state.entities.iter().find(|e| e.id.0 == id);
+
+        let buffer_top = find(&cfg.solar_buffer_top_entity_id).and_then(|e| e.value.as_deref());
+        let buffer_bottom = find(&cfg.solar_buffer_bottom_entity_id).and_then(|e| e.value.as_deref());
+        let solar_flow = find(&cfg.solar_flow_entity_id).and_then(|e| e.value.as_deref());
+        let solar_return = find(&cfg.solar_return_entity_id).and_then(|e| e.value.as_deref());
+
+        let parse = |v: Option<&str>| {
+            v.and_then(|s| s.split_whitespace().next())
+                .and_then(|n| n.parse::<f64>().ok())
+                .unwrap_or(0.0)
+        };
+
+        let sample = BufferTempSample {
+            timestamp: SystemTime::now(),
+            buffer_top: parse(buffer_top),
+            buffer_bottom: parse(buffer_bottom),
+            solar_flow: parse(solar_flow),
+            solar_return: parse(solar_return),
+        };
+
+        if let Ok(mut history) = self.buffer_temp_history.try_write() {
+            history.push_back(sample);
+            while history.len() > 60 {
+                history.pop_front();
+            }
+        }
+    }
+
+    pub async fn compute_buffer_temp_chart(&self) -> BufferTempChartPoints {
+        tokio::task::block_in_place(|| {
+            let history = self.buffer_temp_history.try_read();
+            match history {
+                Ok(h) => {
+                    if h.is_empty() {
+                        return BufferTempChartPoints {
+                            labels: vec![],
+                            buffer_top: vec![],
+                            buffer_bottom: vec![],
+                            solar_flow: vec![],
+                            solar_return: vec![],
+                        };
+                    }
+                    let mut labels = Vec::with_capacity(h.len());
+                    let mut buffer_top = Vec::with_capacity(h.len());
+                    let mut buffer_bottom = Vec::with_capacity(h.len());
+                    let mut solar_flow = Vec::with_capacity(h.len());
+                    let mut solar_return = Vec::with_capacity(h.len());
+
+                    for sample in h.iter() {
+                        if let Ok(elapsed) = SystemTime::now().duration_since(sample.timestamp) {
+                            let age_mins = elapsed.as_secs() / 60;
+                            if age_mins > 60 {
+                                continue;
+                            }
+                            if let Some(dt) = DateTime::from_timestamp(
+                                sample
+                                    .timestamp
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs() as i64,
+                                0,
+                            ) {
+                                labels.push(format!("{:02}:{:02}", dt.hour(), dt.minute()));
+                            }
+                            buffer_top.push(sample.buffer_top);
+                            buffer_bottom.push(sample.buffer_bottom);
+                            solar_flow.push(sample.solar_flow);
+                            solar_return.push(sample.solar_return);
+                        }
+                    }
+                    BufferTempChartPoints {
+                        labels,
+                        buffer_top,
+                        buffer_bottom,
+                        solar_flow,
+                        solar_return,
+                    }
+                }
+                Err(_) => BufferTempChartPoints {
+                    labels: vec![],
+                    buffer_top: vec![],
+                    buffer_bottom: vec![],
+                    solar_flow: vec![],
+                    solar_return: vec![],
+                },
+            }
+        })
+    }
+
+    pub fn compute_pump_status(&self, state: &DashboardState) -> PumpViewModel {
+        let cfg = self.config();
+
+        let find = |id: &str| state.entities.iter().find(|e| e.id.0 == id);
+
+        let pump_entity = find(cfg.solar_pump_entity_id.as_str());
+        let pump_on = pump_entity.map(|e| e.is_on).unwrap_or(false);
+
+        let parse = |e: Option<&Entity>| {
+            e.and_then(|x| x.value.as_ref())
+                .and_then(|v| v.split_whitespace().next())
+                .and_then(|n| n.parse::<f64>().ok())
+                .unwrap_or(0.0)
+        };
+
+        let buffer_bottom_temp = parse(find(&cfg.solar_buffer_bottom_entity_id));
+        let solar_return_temp = parse(find(&cfg.solar_return_entity_id));
+
+        let is_correct = if pump_on {
+            solar_return_temp > buffer_bottom_temp
+        } else {
+            solar_return_temp <= buffer_bottom_temp
+        };
+
+        let sample = PumpSample {
+            timestamp: SystemTime::now(),
+            pump_on,
+            is_correct,
+        };
+        tokio::task::block_in_place(|| {
+            if let Ok(mut history) = self.pump_history.try_write() {
+                history.push_back(sample);
+                while history.len() > 60 {
+                    history.pop_front();
+                }
+            }
+        });
+
+        PumpViewModel {
+            pump_on,
+            is_correct,
+            status_label: if pump_on { "ON".to_string() } else { "OFF".to_string() },
+            css_class: if is_correct {
+                if pump_on {
+                    "pump-on".to_string()
+                } else {
+                    "pump-off".to_string()
+                }
+            } else {
+                "pump-wrong".to_string()
+            },
+        }
     }
 }
 
