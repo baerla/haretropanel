@@ -472,7 +472,7 @@ mod tests {
             solar_history_minutes: 3600,
             solar_max_watts: 0.0,
             solar_sample_secs: 60,
-
+            force_fetch_interval_secs: 120,
         }
     }
 

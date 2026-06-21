@@ -39,6 +39,9 @@ pub struct AppConfig {
     pub goe_energy_stable_secs: u64,
     pub goe_energy_delta_kwh: f64,
 
+    // force fetch interval
+    pub force_fetch_interval_secs: u64,
+
     // logging
     pub log_dir: String,
     pub log_rotation: LogRotation,
@@ -131,6 +134,11 @@ impl AppConfig {
             .unwrap_or_else(|_| "0.02".to_string())
             .parse()
             .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_GOE_ENERGY_DELTA_KWH: {e}")))?;
+
+        let force_fetch_interval_secs = env::var("HARETROPANEL_FORCE_FETCH_INTERVAL_SECS")
+            .unwrap_or_else(|_| "120".to_string())
+            .parse()
+            .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_FORCE_FETCH_INTERVAL_SECS: {e}")))?;
 
         let log_dir = env::var("HARETROPANEL_LOG_DIR").unwrap_or_else(|_| "./logs".to_string());
 
@@ -229,6 +237,7 @@ impl AppConfig {
             solar_sample_secs,
             goe_energy_stable_secs,
             goe_energy_delta_kwh,
+            force_fetch_interval_secs,
             log_dir,
             log_rotation,
             log_level,
