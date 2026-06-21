@@ -333,103 +333,100 @@
             console.log('Buffer chart initialized');
         
 
-            console.log('Solar polling started');
+            console.log('Solar WebSocket started');
 
-            function updateSolarData() {
-                fetch('/api/solar', { cache: 'no-cache' })
-                    .then(function(res) { return res.json(); })
-                    .then(function(data) {
-                        console.log('Solar data updated:', data.watts, 'W');
+            var socket = null;
 
-                        // Update current output stat
-                        var wattsEl = document.querySelector('.stat:first-child .stat-value');
-                        if (wattsEl) wattsEl.textContent = Math.round(data.watts) + ' W';
+            function updateSolarData(data) {
+                console.log('Solar data updated:', data.watts, 'W');
 
-                        // Update chart
-                        if (data.chart_labels && data.chart_values) {
-                            chart.data.labels = data.chart_labels.slice(-maxDataPoints);
-                            chart.data.datasets[0].data = data.chart_values.slice(-maxDataPoints);
-                            chart.update();
-                        }
+                // Update current output stat
+                var wattsEl = document.querySelector('.stat:first-child .stat-value');
+                if (wattsEl) wattsEl.textContent = Math.round(data.watts) + ' W';
 
-                        // Update charger section
-                        if (data.charger_amps !== undefined) {
-                            var ampsEl = document.querySelector('.charger-reading');
-                            if (ampsEl) ampsEl.textContent = data.charger_amps;
-                        }
-                        if (data.charger_status !== undefined) {
-                            var statusEl = document.querySelector('.charger-status');
-                            if (statusEl) statusEl.textContent = data.charger_status;
-                        }
-                        if (data.charger_car_state !== undefined) {
-                            var carEl = document.querySelector('.charger-car-state');
-                            if (carEl) {
-                                carEl.textContent = data.charger_car_state;
-                                carEl.className = 'charger-car-state ' + data.charger_car_state_class;
-                            }
-                        }
-                        if (data.charger_car_connected !== undefined) {
-                            var pillEl = document.querySelector('.charger-pill');
-                            if (pillEl) {
-                                if (data.charger_paused) {
-                                    pillEl.textContent = 'PAUSIERT';
-                                    pillEl.className = 'charger-pill charger-pill-paused';
-                                } else if (data.charger_charging) {
-                                    pillEl.textContent = 'Am Laden';
-                                    pillEl.className = 'charger-pill charger-pill-charging';
-                                } else if (data.charger_car_connected) {
-                                    pillEl.textContent = 'Angeschlossen';
-                                    pillEl.className = 'charger-pill';
-                                } else {
-                                    pillEl.textContent = 'Nicht angeschlossen';
-                                    pillEl.className = 'charger-pill charger-pill-disconnected';
-                                }
-                            }
-                        }
-                        if (data.garage_left) {
-                            updateGarage(data.garage_left, 'left');
-                        }
-                        if (data.garage_right) {
-                            updateGarage(data.garage_right, 'right');
-                        }
+                // Update chart
+                if (data.chart_labels && data.chart_values) {
+                    chart.data.labels = data.chart_labels.slice(-maxDataPoints);
+                    chart.data.datasets[0].data = data.chart_values.slice(-maxDataPoints);
+                    chart.update();
+                }
 
-                        // Update buffer temp chart
-                        if (data.buffer_temps) {
-                            if (bufferChart && data.buffer_temps.labels) {
-                                bufferChart.data.labels = data.buffer_temps.labels.slice(-maxDataPoints);
-                                bufferChart.data.datasets[0].data = (data.buffer_temps.buffer_top || []).slice(-maxDataPoints);
-                                bufferChart.data.datasets[1].data = (data.buffer_temps.buffer_bottom || []).slice(-maxDataPoints);
-                                bufferChart.data.datasets[2].data = (data.buffer_temps.solar_flow || []).slice(-maxDataPoints);
-                                bufferChart.data.datasets[3].data = (data.buffer_temps.solar_return || []).slice(-maxDataPoints);
-                                bufferChart.update();
-                            }
+                // Update charger section
+                if (data.charger_amps !== undefined) {
+                    var ampsEl = document.querySelector('.charger-reading');
+                    if (ampsEl) ampsEl.textContent = data.charger_amps;
+                }
+                if (data.charger_status !== undefined) {
+                    var statusEl = document.querySelector('.charger-status');
+                    if (statusEl) statusEl.textContent = data.charger_status;
+                }
+                if (data.charger_car_state !== undefined) {
+                    var carEl = document.querySelector('.charger-car-state');
+                    if (carEl) {
+                        carEl.textContent = data.charger_car_state;
+                        carEl.className = 'charger-car-state ' + data.charger_car_state_class;
+                    }
+                }
+                if (data.charger_car_connected !== undefined) {
+                    var pillEl = document.querySelector('.charger-pill');
+                    if (pillEl) {
+                        if (data.charger_paused) {
+                            pillEl.textContent = 'PAUSIERT';
+                            pillEl.className = 'charger-pill charger-pill-paused';
+                        } else if (data.charger_charging) {
+                            pillEl.textContent = 'Am Laden';
+                            pillEl.className = 'charger-pill charger-pill-charging';
+                        } else if (data.charger_car_connected) {
+                            pillEl.textContent = 'Angeschlossen';
+                            pillEl.className = 'charger-pill';
+                        } else {
+                            pillEl.textContent = 'Nicht angeschlossen';
+                            pillEl.className = 'charger-pill charger-pill-disconnected';
                         }
+                    }
+                }
+                if (data.garage_left) {
+                    updateGarage(data.garage_left, 'left');
+                }
+                if (data.garage_right) {
+                    updateGarage(data.garage_right, 'right');
+                }
 
-                        // Update pump tile
-                        if (data.pump_status) {
-                            var tileEl = document.getElementById('pump-tile');
-                            if (tileEl) {
-                                tileEl.className = 'pump-tile ' + data.pump_status.css_class;
-                            }
-                            var pumpStateEl = document.getElementById('pump-state');
-                            if (pumpStateEl) pumpStateEl.textContent = data.pump_status.status_label;
-                            var pumpInfoEl = document.getElementById('pump-info');
-                            if (pumpInfoEl) {
-                                if (data.pump_status.pump_on) {
-                                    pumpInfoEl.innerHTML = data.pump_status.is_correct ? '✅ Heat flowing into buffer' : '❌ No heat transfer';
-                                } else {
-                                    pumpInfoEl.innerHTML = data.pump_status.is_correct ? '✅ Normal operation' : '❌ Should be running';
-                                }
-                            }
-                        }
+                // Update buffer temp chart
+                if (data.buffer_temps) {
+                    if (bufferChart && data.buffer_temps.labels) {
+                        bufferChart.data.labels = data.buffer_temps.labels.slice(-maxDataPoints);
+                        bufferChart.data.datasets[0].data = (data.buffer_temps.buffer_top || []).slice(-maxDataPoints);
+                        bufferChart.data.datasets[1].data = (data.buffer_temps.buffer_bottom || []).slice(-maxDataPoints);
+                        bufferChart.data.datasets[2].data = (data.buffer_temps.solar_flow || []).slice(-maxDataPoints);
+                        bufferChart.data.datasets[3].data = (data.buffer_temps.solar_return || []).slice(-maxDataPoints);
+                        bufferChart.update();
+                    }
+                }
 
-                        // Update last updated timestamp
-                        var lastUpdatedEl = document.querySelector('.last-updated');
-                        if (lastUpdatedEl) {
-                            lastUpdatedEl.textContent = 'Letztes Update: ' + new Date(Date.now()).toLocaleString("de-DE");
+                // Update pump tile
+                if (data.pump_status) {
+                    var tileEl = document.getElementById('pump-tile');
+                    if (tileEl) {
+                        tileEl.className = 'pump-tile ' + data.pump_status.css_class;
+                    }
+                    var pumpStateEl = document.getElementById('pump-state');
+                    if (pumpStateEl) pumpStateEl.textContent = data.pump_status.status_label;
+                    var pumpInfoEl = document.getElementById('pump-info');
+                    if (pumpInfoEl) {
+                        if (data.pump_status.pump_on) {
+                            pumpInfoEl.innerHTML = data.pump_status.is_correct ? '\u2705 Heat flowing into buffer' : '\u274c No heat transfer';
+                        } else {
+                            pumpInfoEl.innerHTML = data.pump_status.is_correct ? '\u2705 Normal operation' : '\u274c Should be running';
                         }
-                    })
-                    .catch(function(err) { console.error('Solar poll failed:', err); });
+                    }
+                }
+
+                // Update last updated timestamp
+                var lastUpdatedEl = document.querySelector('.last-updated');
+                if (lastUpdatedEl) {
+                    lastUpdatedEl.textContent = 'Letztes Update: ' + new Date(Date.now()).toLocaleString("de-DE");
+                }
             }
 
             function updateGarage(data, side) {
@@ -443,8 +440,36 @@
                 if (btnEl) btnEl.setAttribute('class', data.button_class);
             }
 
-            // Poll every 10 seconds
-            setInterval(updateSolarData, 10000);
+            function connect() {
+                socket = new WebSocket('ws://' + location.host + '/ws/solar');
+
+                socket.onmessage = function(event) {
+                    try {
+                        var data = JSON.parse(event.data);
+                        updateSolarData(data);
+                    } catch (e) {
+                        console.error('WebSocket message parse failed:', e);
+                    }
+                };
+
+                socket.onclose = function() {
+                    socket = null;
+                };
+            }
+
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'hidden' && socket) {
+                    socket.close();
+                }
+            });
+
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible') {
+                    connect();
+                }
+            });
+
+            connect();
         })();
     </script>
 </div>

@@ -41,6 +41,8 @@ pub async fn run(config: AppConfig) -> AppResult<()> {
         config.clone(),
     ));
 
+    dashboard_service.start_periodic_updates();
+
     let state = AppState { dashboard_service };
 
     let app = build_router(state);

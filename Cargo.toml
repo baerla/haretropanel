@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = { version = "0.8", features = ["macros"] }
+axum = { version = "0.8", features = ["macros", "ws"] }
 tokio = { version = "1.48", features = ["full"] }
 
 serde = { version = "1.0.228", features = ["derive"] }
@@ -25,6 +25,7 @@ tower-http = { version = "0.6", features = ["trace"] }
 
 url = "2"
 chrono = "0.4"
+futures-util = "0.3.32"
 
 [dev-dependencies]
 mockall = "0.14"

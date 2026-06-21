@@ -78,6 +78,7 @@ pub struct DashboardService {
     pump_history: RwLock<VecDeque<PumpSample>>,
     goe_energy_tracker: RwLock<GoeEnergyTracker>,
     config: crate::config::AppConfig,
+    ws_tx: tokio::sync::broadcast::Sender<serde_json::Value>,
 }
 
 impl DashboardService {
@@ -100,7 +101,104 @@ impl DashboardService {
                 last_change: None,
             }),
             config,
+            ws_tx: tokio::sync::broadcast::Sender::new(16),
         }
+    }
+
+    pub fn subscribe_to_ws(&self) -> tokio::sync::broadcast::Receiver<serde_json::Value> {
+        self.ws_tx.subscribe()
+    }
+
+    pub fn start_periodic_updates(self: &Arc<Self>) {
+        let arc = Arc::clone(self);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(10));
+            loop {
+                interval.tick().await;
+                if let Ok(dashboard_state) = arc.get_dashboard_with_refresh(false).await {
+                    let cfg = arc.config();
+                    let solar_watts = arc.parse_solar_watts(&dashboard_state);
+                    let chart_points = arc.compute_solar_chart().await;
+                    let charger_state = arc.compute_car_state(&dashboard_state).await;
+                    let buffer_chart_points = arc.compute_buffer_temp_chart().await;
+                    let buffer_labels = buffer_chart_points.labels;
+                    let buffer_top_vals: Vec<String> = buffer_chart_points.buffer_top.iter().map(|v| format!("{:.1}", v)).collect();
+                    let buffer_bottom_vals: Vec<String> = buffer_chart_points.buffer_bottom.iter().map(|v| format!("{:.1}", v)).collect();
+                    let solar_flow_vals: Vec<String> = buffer_chart_points.solar_flow.iter().map(|v| format!("{:.1}", v)).collect();
+                    let solar_return_vals: Vec<String> = buffer_chart_points.solar_return.iter().map(|v| format!("{:.1}", v)).collect();
+                    let pump_status = arc.compute_pump_status(&dashboard_state);
+
+                    let make_garage_status = |entity_id: &str, default_name: &str| -> serde_json::Value {
+                        dashboard_state
+                            .entities
+                            .iter()
+                            .find(|e| e.id.0 == entity_id)
+                            .map(|e| {
+                                let is_open = e.is_on;
+                                let name = e.name.clone();
+                                let status = if is_open { "Open" } else { "Closed" };
+                                let action = if is_open { "Close" } else { "Open" };
+                                let button_class = if is_open {
+                                    "garage-btn garage-open"
+                                } else {
+                                    "garage-btn garage-closed"
+                                };
+                                serde_json::json!({
+                                    "name": name,
+                                    "status": status,
+                                    "action": action,
+                                    "button_class": button_class,
+                                })
+                            })
+                            .unwrap_or_else(|| {
+                                serde_json::json!({
+                                    "name": default_name,
+                                    "status": "Closed",
+                                    "action": "Open",
+                                    "button_class": "garage-btn garage-closed",
+                                })
+                            })
+                    };
+
+                    let payload = serde_json::json!({
+                        "watts": solar_watts,
+                        "max_watts": cfg.solar_max_watts,
+                        "percent": if cfg.solar_max_watts > 0.0 {
+                            ((solar_watts / cfg.solar_max_watts) * 100.0).round().clamp(0.0, 100.0) as u8
+                        } else {
+                            0
+                        },
+                        "chart_labels": chart_points.labels,
+                        "chart_values": chart_points.values,
+                        "charger_amps": charger_state.charger_value,
+                        "charger_status": charger_state.status,
+                        "charger_car_state": charger_state.car_state_label,
+                        "charger_car_state_class": charger_state.car_state_class,
+                        "charger_car_connected": charger_state.car_connected,
+                        "charger_charging": charger_state.car_charging,
+                        "charger_paused": charger_state.paused,
+                        "garage_left": make_garage_status(cfg.garage_left_status_entity_id.as_str(), "Garage Left"),
+                        "garage_right": make_garage_status(cfg.garage_right_status_entity_id.as_str(), "Garage Right"),
+                        "buffer_temps": {
+                            "labels": buffer_labels,
+                            "buffer_top": buffer_top_vals,
+                            "buffer_bottom": buffer_bottom_vals,
+                            "solar_flow": solar_flow_vals,
+                            "solar_return": solar_return_vals,
+                        },
+                        "pump_status": {
+                            "pump_on": pump_status.pump_on,
+                            "is_correct": pump_status.is_correct,
+                            "status_label": pump_status.status_label,
+                            "css_class": pump_status.css_class,
+                        },
+                    });
+
+                    // Ignore errors if no receivers
+                    let _ = arc.ws_tx.send(payload);
+                }
+            }
+        });
     }
 
     fn ttl_secs_for_kind(&self, kind: &EntityKind) -> u64 {
