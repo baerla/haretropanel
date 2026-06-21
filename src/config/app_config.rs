@@ -43,8 +43,7 @@ pub struct AppConfig {
     pub force_fetch_interval_secs: u64,
 
     // logging
-    pub log_dir: String,
-    pub log_rotation: LogRotation,
+    pub log_file: Option<String>,
     pub log_level: String,
 
     // dashboard cache (in-memory, per entity kind)
@@ -53,13 +52,6 @@ pub struct AppConfig {
     pub dashboard_cache_ttl_switch_secs: Option<u64>,
     pub dashboard_cache_ttl_sensor_secs: Option<u64>,
     pub dashboard_cache_ttl_climate_secs: Option<u64>,
-}
-
-#[derive(Clone, Debug)]
-pub enum LogRotation {
-    Daily,
-    Hourly,
-    Never,
 }
 
 impl AppConfig {
@@ -140,17 +132,8 @@ impl AppConfig {
             .parse()
             .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_FORCE_FETCH_INTERVAL_SECS: {e}")))?;
 
-        let log_dir = env::var("HARETROPANEL_LOG_DIR").unwrap_or_else(|_| "./logs".to_string());
-
-        let log_rotation = match env::var("HARETROPANEL_LOG_ROTATION")
-            .unwrap_or_else(|_| "daily".to_string())
-            .to_lowercase()
-            .as_str()
-        {
-            "hourly" => LogRotation::Hourly,
-            "never" => LogRotation::Never,
-            _ => LogRotation::Daily,
-        };
+        // logging — when set, logs to this file; when unset, logs to stdout
+        let log_file = env::var("HARETROPANEL_LOG_FILE").ok();
 
         let log_level = env::var("HARETROPANEL_LOG_LEVEL")
             .unwrap_or_else(|_| "haretropanel=info,tower_http=info".to_string());
@@ -225,8 +208,7 @@ impl AppConfig {
             goe_energy_stable_secs,
             goe_energy_delta_kwh,
             force_fetch_interval_secs,
-            log_dir,
-            log_rotation,
+            log_file,
             log_level,
             dashboard_cache_ttl_default_secs,
             dashboard_cache_ttl_light_secs,
@@ -245,31 +227,12 @@ mod app_config_tests {
     /// All config tests are in a single function to avoid parallelism issues with .env and env vars.
     #[test]
     fn test_all_config_scenarios() {
-        let dotenv_path = ".env";
-        let backup_path = ".env.test_backup";
-        let dotenv_exists = std::path::Path::new(dotenv_path).exists();
-        if dotenv_exists {
-            std::fs::rename(dotenv_path, backup_path).unwrap();
-        }
-
-        // Helper closures that capture base_vars
-        let base_vars = vec![
-            "HARETROPANEL_PORT".to_string(),
-            "HA_BASE_URL".to_string(),
-            "HA_TOKEN".to_string(),
-            "HARETROPANEL_LOG_DIR".to_string(),
-            "HARETROPANEL_LOG_ROTATION".to_string(),
-            "HARETROPANEL_LOG_LEVEL".to_string(),
-            "HARETROPANEL_CACHE_TTL_DEFAULT_SECS".to_string(),
-            "HARETROPANEL_CACHE_TTL_LIGHT_SECS".to_string(),
-            "HARETROPANEL_CACHE_TTL_SWITCH_SECS".to_string(),
-            "HARETROPANEL_CACHE_TTL_SENSOR_SECS".to_string(),
-            "HARETROPANEL_CACHE_TTL_CLIMATE_SECS".to_string(),
-        ];
-        let base_vars_clone = base_vars.clone();
-        let clear_all = move || {
-            for var in &base_vars_clone {
-                env::remove_var(var);
+        let clear_all = || {
+            // Clear all HARETROPANEL_* and HA_* vars that from_env() reads
+            for var in std::env::vars() {
+                if var.0.starts_with("HARETROPANEL_") || var.0 == "HA_BASE_URL" || var.0 == "HA_TOKEN" || var.0 == "DOTENV_FILE" {
+                    env::remove_var(&var.0);
+                }
             }
         };
 
@@ -280,8 +243,7 @@ mod app_config_tests {
         assert_eq!(cfg.server_port, 8080);
         assert_eq!(cfg.ha_base_url, "https://ha.example.com");
         assert_eq!(cfg.ha_token, Some("t".to_string()));
-        assert_eq!(cfg.log_dir, "./logs");
-        assert!(matches!(cfg.log_rotation, LogRotation::Daily));
+        assert_eq!(cfg.log_file, None);
         assert_eq!(cfg.log_level, "haretropanel=info,tower_http=info");
         assert_eq!(cfg.dashboard_cache_ttl_default_secs, 5);
         assert_eq!(cfg.dashboard_cache_ttl_light_secs, None);
@@ -301,26 +263,19 @@ mod app_config_tests {
         assert!(AppConfig::from_env().is_err());
         clear_all();
 
-        // 4. Log rotation variants
-        env::set_var("HARETROPANEL_LOG_ROTATION", "hourly");
-        assert!(matches!(AppConfig::from_env().unwrap().log_rotation, LogRotation::Hourly));
+        // 4. Log file — default is None (stdout)
+        clear_all();
+        env::set_var("HARETROPANEL_LOG_LEVEL", "debug");
+        assert!(AppConfig::from_env().unwrap().log_file.is_none());
         clear_all();
 
-        env::set_var("HARETROPANEL_LOG_ROTATION", "never");
-        assert!(matches!(AppConfig::from_env().unwrap().log_rotation, LogRotation::Never));
-        clear_all();
-
-        env::set_var("HARETROPANEL_LOG_ROTATION", "monthly"); // unknown → Daily
-        assert!(matches!(AppConfig::from_env().unwrap().log_rotation, LogRotation::Daily));
-        clear_all();
-
-        env::set_var("HARETROPANEL_LOG_ROTATION", "HOURLY"); // case insensitive
-        assert!(matches!(AppConfig::from_env().unwrap().log_rotation, LogRotation::Hourly));
-        clear_all();
-
-        // 5. Log dir
-        env::set_var("HARETROPANEL_LOG_DIR", "/var/log/haretropanel");
-        assert_eq!(AppConfig::from_env().unwrap().log_dir, "/var/log/haretropanel");
+        // 5. Log file custom path
+        env::set_var("HARETROPANEL_LOG_FILE", "/var/log/haretropanel/haretropanel.log");
+        env::set_var("HARETROPANEL_LOG_LEVEL", "debug");
+        assert_eq!(
+            AppConfig::from_env().unwrap().log_file,
+            Some("/var/log/haretropanel/haretropanel.log".to_string())
+        );
         clear_all();
 
         // 6. Log level
@@ -364,27 +319,15 @@ mod app_config_tests {
         let cfg = AppConfig::from_env().unwrap();
         assert_eq!(cfg.ha_token, None);
 
-        // 12. LogRotation debug
-        assert!(format!("{:?}", LogRotation::Daily).contains("Daily"));
-        assert!(format!("{:?}", LogRotation::Hourly).contains("Hourly"));
-        assert!(format!("{:?}", LogRotation::Never).contains("Never"));
-
-        // 13. Clone
+        // 12. Clone
         let cfg = AppConfig::from_env().unwrap();
         let cloned = cfg.clone();
         assert_eq!(cfg.server_port, cloned.server_port);
         assert_eq!(cfg.ha_base_url, cloned.ha_base_url);
 
-        // 14. Debug display
+        // 12. Debug display
         let debug_str = format!("{cfg:?}");
         assert!(debug_str.contains("AppConfig"));
 
-        // --- Restore state ---
-        if dotenv_exists {
-            std::fs::rename(backup_path, dotenv_path).unwrap();
-        }
-        for var in &base_vars {
-            env::remove_var(var);
-        }
     }
 }

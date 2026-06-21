@@ -227,7 +227,7 @@ impl HomeAssistantClient for HaHttpClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{AppConfig, LogRotation};
+    use crate::config::AppConfig;
 
     #[test]
     fn test_entity_kind_from_id_light() {
@@ -403,8 +403,7 @@ mod tests {
             server_port: 8080,
             ha_base_url: "http://localhost:8123".to_string(),
             ha_token: Some("token".to_string()),
-            log_dir: "./logs".to_string(),
-            log_rotation: LogRotation::Daily,
+            log_file: None,
             log_level: "info".to_string(),
             dashboard_cache_ttl_default_secs: 5,
             dashboard_cache_ttl_light_secs: None,

@@ -1,35 +1,31 @@
 use haretropanel::bootstrap::run;
-use haretropanel::config::{AppConfig, LogRotation};
+use haretropanel::config::AppConfig;
 
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 fn init_tracing(config: &AppConfig) {
-    // Create log directory if it does not exist
-    std::fs::create_dir_all(&config.log_dir).ok();
-
-    let rotation = match config.log_rotation {
-        LogRotation::Daily => Rotation::DAILY,
-        LogRotation::Hourly => Rotation::HOURLY,
-        LogRotation::Never => Rotation::NEVER,
-    };
-
-    let file_appender: RollingFileAppender =
-        RollingFileAppender::new(rotation, &config.log_dir, "haretropanel.log");
-
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-
-    // Keep guard alive for the whole program lifetime
-    Box::leak(Box::new(guard));
-
     let env_filter = EnvFilter::new(&config.log_level);
 
-    let fmt_layer = fmt::layer().with_writer(non_blocking).with_ansi(false);
+    let registry = tracing_subscriber::registry().with(env_filter);
 
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(fmt_layer)
-        .init();
+    if let Some(log_file) = &config.log_file {
+        let log_path = std::path::Path::new(log_file);
+        // Create log directory if it does not exist
+        if let Some(parent) = log_path.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+
+        let file_appender = RollingFileAppender::new(Rotation::NEVER, log_path, "haretropanel.log");
+        let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+        // Leak guard to keep it alive for process lifetime
+        std::mem::forget(Box::new(_guard));
+        let fmt_layer = fmt::layer().with_writer(non_blocking).with_ansi(false);
+        registry.with(fmt_layer).init();
+    } else {
+        let fmt_layer = fmt::layer().with_writer(std::io::stdout).with_ansi(true);
+        registry.with(fmt_layer).init();
+    }
 }
 
 #[tokio::main]

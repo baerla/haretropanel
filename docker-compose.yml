@@ -5,20 +5,19 @@ services:
       dockerfile: Dockerfile
 
     env_file:
-      - .env.local
+      - .env
 
     environment:
       TZ: Europe/Berlin
       HARETROPANEL_PORT: "8080"
-      HARETROPANEL_LOG_DIR: "/app/logs"
-      HARETROPANEL_LOG_ROTATION: "daily"
+      HARETROPANEL_LOG_FILE: "/app/logs/haretropanel.log"
       HARETROPANEL_LOG_LEVEL: "haretropanel=info,tower_http=info"
 
     ports:
       - "8080:8080"
 
     volumes:
-      - ./logs:/app/logs
+      - ./logs:/app
       - ./data:/app/data
 
     restart: unless-stopped
