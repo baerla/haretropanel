@@ -461,6 +461,23 @@ impl DashboardService {
         let energy_stable = self.is_goe_energy_stable().await;
         let car_present = car_connected || !status_indicates_absent;
 
+        eprintln!("=== compute_car_state DEBUG ===");
+        eprintln!("  charger_current_entity_id={:?} → value={:?}", cfg.charger_current_entity_id, charger_entity.as_ref().and_then(|e| e.value.as_ref()));
+        eprintln!("  goe_status_entity_id={:?} → value={:?}", cfg.goe_status_entity_id, goe_status_entity.as_ref().and_then(|e| e.value.as_ref()));
+        eprintln!("  goe_car_connected_entity_id={:?} → value={:?}", cfg.goe_car_connected_entity_id, car_connected_entity.as_ref().and_then(|e| e.value.as_ref()));
+        eprintln!("  goe_charging_entity_id={:?} → value={:?}", cfg.goe_charging_entity_id, goe_charging_entity.as_ref().and_then(|e| e.value.as_ref()));
+        eprintln!("  charger_value={}", charger_value);
+        eprintln!("  goe_status={}", goe_status);
+        eprintln!("  goe_status_lower={}", goe_status_lower);
+        eprintln!("  paused={}", paused);
+        eprintln!("  car_connected={}", car_connected);
+        eprintln!("  car_charging={}", car_charging);
+        eprintln!("  status_car_loading={}", status_car_loading);
+        eprintln!("  status_indicates_absent={}", status_indicates_absent);
+        eprintln!("  status_indicates_finished={}", status_indicates_finished);
+        eprintln!("  energy_stable={}", energy_stable);
+        eprintln!("  car_present={}", car_present);
+
         let car_state_label = if !car_present
             || status_indicates_absent
             || (status_indicates_finished && energy_stable)
@@ -483,6 +500,10 @@ impl DashboardService {
         } else {
             "is-empty".to_string()
         };
+
+        eprintln!("  car_state_label={}", car_state_label);
+        eprintln!("  car_state_class={}", car_state_class);
+        eprintln!("=== compute_car_state END ===\n");
 
         ChargerState {
             charger_value,
