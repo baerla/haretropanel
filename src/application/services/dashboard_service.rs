@@ -144,8 +144,8 @@ impl DashboardService {
                             .map(|e| {
                                 let is_open = e.is_on;
                                 let name = e.name.clone();
-                                let status = if is_open { "Open" } else { "Closed" };
-                                let action = if is_open { "Close" } else { "Open" };
+                                let status = if is_open { "Offen" } else { "Geschlossen" };
+                                let action = if is_open { "Schließen" } else { "Öffnen" };
                                 let button_class = if is_open {
                                     "garage-btn garage-open"
                                 } else {
@@ -161,8 +161,8 @@ impl DashboardService {
                             .unwrap_or_else(|| {
                                 serde_json::json!({
                                     "name": default_name,
-                                    "status": "Closed",
-                                    "action": "Open",
+                                    "status": "Geschlossen",
+                                    "action": "Öffnen",
                                     "button_class": "garage-btn garage-closed",
                                 })
                             })
