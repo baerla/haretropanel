@@ -42,7 +42,6 @@ pub async fn run(config: AppConfig) -> AppResult<()> {
     ));
 
     dashboard_service.start_periodic_updates();
-    dashboard_service.start_periodic_force_fetch();
 
     let state = AppState { dashboard_service };
 

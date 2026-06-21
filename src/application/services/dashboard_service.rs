@@ -113,9 +113,17 @@ impl DashboardService {
         let arc = Arc::clone(self);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(10));
+            let force_fetch_every = arc.config().force_fetch_interval_secs / 10;
+            let mut cycle: u64 = 0;
             loop {
                 interval.tick().await;
-                if let Ok(dashboard_state) = arc.get_dashboard_with_refresh(false).await {
+                cycle += 1;
+                // Force a full HA fetch every N cycles to keep data fresh
+                let force = cycle % force_fetch_every == 0 && cycle > 0;
+                if force {
+                    tracing::debug!("Periodic force refresh from Home Assistant");
+                }
+                if let Ok(dashboard_state) = arc.get_dashboard_with_refresh(force).await {
                     let cfg = arc.config();
                     let solar_watts = arc.parse_solar_watts(&dashboard_state);
                     let chart_points = arc.compute_solar_chart().await;
@@ -339,105 +347,6 @@ impl DashboardService {
 
     pub fn config(&self) -> &crate::config::AppConfig {
         &self.config
-    }
-
-    /// Always fetch fresh state from Home Assistant, bypassing the TTL cache.
-    /// Updates the in-memory cache and all history trackers.
-    pub async fn force_fetch(&self) {
-        tracing::info!("Force fetching fresh dashboard state from Home Assistant");
-        let fresh = self.ha_client.fetch_dashboard_state().await;
-        if let Ok(fresh) = &fresh {
-            let mut solar_history = self.solar_history.write().await;
-            let mut buffer_temp_history = self.buffer_temp_history.write().await;
-
-            for entity in &fresh.entities {
-                let entity_id_str = &entity.id.0;
-                let value = match &entity.value {
-                    Some(v) => match v.parse::<f64>() {
-                        Ok(n) => n,
-                        Err(_) => continue,
-                    },
-                    None => continue,
-                };
-
-                let now = SystemTime::now();
-
-                if entity_id_str == &self.config.solar_entity_id {
-                    solar_history.push_back(SolarSample {
-                        timestamp: now,
-                        watts: value,
-                    });
-                }
-
-                if entity_id_str == &self.config.solar_buffer_top_entity_id {
-                    let mut current = buffer_temp_history.pop_front();
-                    let sample = match current.take() {
-                        Some(s) => BufferTempSample {
-                            buffer_top: value,
-                            ..s
-                        },
-                        None => BufferTempSample {
-                            timestamp: now,
-                            buffer_top: value,
-                            buffer_bottom: 0.0,
-                            solar_flow: 0.0,
-                            solar_return: 0.0,
-                        },
-                    };
-                    buffer_temp_history.push_front(sample);
-                }
-            }
-
-            let max_age = Duration::from_secs(self.config.solar_history_minutes * 60);
-            let now = SystemTime::now();
-            while let Some(front) = solar_history.front() {
-                if now.duration_since(front.timestamp).unwrap_or(Duration::ZERO) > max_age {
-                    solar_history.pop_front();
-                } else {
-                    break;
-                }
-            }
-            while let Some(front) = buffer_temp_history.front() {
-                if now.duration_since(front.timestamp).unwrap_or(Duration::ZERO) > max_age {
-                    buffer_temp_history.pop_front();
-                } else {
-                    break;
-                }
-            }
-
-            let mut state_cache = self.state_cache.write().await;
-            *state_cache = Some(CachedDashboardState {
-                state: fresh.clone(),
-                fetched_at: Instant::now(),
-            });
-
-            tracing::info!(
-                "Force fetch complete: {} entities, {} solar samples, {} buffer samples",
-                fresh.entities.len(),
-                solar_history.len(),
-                buffer_temp_history.len(),
-            );
-        } else if let Err(e) = &fresh {
-            tracing::error!("Force fetch failed: {e}");
-        }
-    }
-
-    /// Spawn a background task that force-fetches from HA every N seconds (from config).
-    pub fn start_periodic_force_fetch(self: &Arc<Self>) {
-        let arc = Arc::clone(self);
-        let interval_secs = self.config.force_fetch_interval_secs;
-        tokio::spawn(async move {
-            tracing::info!(
-                "Starting periodic force fetch every {} seconds",
-                interval_secs
-            );
-            let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
-            interval.tick().await; // first tick immediately
-            loop {
-                interval.tick().await;
-                arc.force_fetch().await;
-            }
-        });
     }
 
     /// Returns the human-readable time when the dashboard was last fetched from HA.
