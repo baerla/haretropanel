@@ -56,13 +56,6 @@ struct BufferTempSample {
 }
 
 #[derive(Clone, Debug)]
-struct PumpSample {
-    timestamp: SystemTime,
-    pump_on: bool,
-    is_correct: bool,
-}
-
-#[derive(Clone, Debug)]
 struct GoeEnergyTracker {
     last_value: Option<f64>,
     last_change: Option<Instant>,
@@ -75,7 +68,6 @@ pub struct DashboardService {
     state_cache: RwLock<Option<CachedDashboardState>>,
     solar_history: RwLock<VecDeque<SolarSample>>,
     buffer_temp_history: RwLock<VecDeque<BufferTempSample>>,
-    pump_history: RwLock<VecDeque<PumpSample>>,
     goe_energy_tracker: RwLock<GoeEnergyTracker>,
     config: crate::config::AppConfig,
     ws_tx: tokio::sync::broadcast::Sender<serde_json::Value>,
@@ -95,7 +87,6 @@ impl DashboardService {
             state_cache: RwLock::new(None),
             solar_history: RwLock::new(VecDeque::new()),
             buffer_temp_history: RwLock::new(VecDeque::new()),
-            pump_history: RwLock::new(VecDeque::new()),
             goe_energy_tracker: RwLock::new(GoeEnergyTracker {
                 last_value: None,
                 last_change: None,
@@ -683,7 +674,7 @@ impl DashboardService {
                     for sample in h.iter() {
                         if let Ok(elapsed) = SystemTime::now().duration_since(sample.timestamp) {
                             let age_mins = elapsed.as_secs() / 60;
-                            if age_mins > 60 {
+                            if age_mins > self.config().solar_history_minutes {
                                 continue;
                             }
                             if let Some(utc_dt) = DateTime::from_timestamp(
@@ -744,20 +735,6 @@ impl DashboardService {
         } else {
             solar_return_temp <= buffer_bottom_temp
         };
-
-        let sample = PumpSample {
-            timestamp: SystemTime::now(),
-            pump_on,
-            is_correct,
-        };
-        tokio::task::block_in_place(|| {
-            if let Ok(mut history) = self.pump_history.try_write() {
-                history.push_back(sample);
-                while history.len() > 60 {
-                    history.pop_front();
-                }
-            }
-        });
 
         PumpViewModel {
             pump_on,
