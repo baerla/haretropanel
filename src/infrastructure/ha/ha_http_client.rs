@@ -37,7 +37,7 @@ pub fn is_on(kind: &EntityKind, state: &str) -> bool {
     match kind {
         EntityKind::Light | EntityKind::Switch => state == "on",
         EntityKind::Climate => matches!(state, "heat" | "cool" | "heat_cool" | "auto"),
-        EntityKind::Sensor => matches!(state, "on" | "open" | "home" | "above_horizon"),
+        EntityKind::Sensor => matches!(state, "on" | "open" | "home" | "above_horizon" | "An"),
         EntityKind::Script => state == "on",
         EntityKind::Cover => matches!(state, "open" | "opening"),
     }
