@@ -448,6 +448,9 @@ impl DashboardService {
             .unwrap_or(false);
 
         let goe_status_lower = goe_status.to_lowercase();
+        let status_car_loading = goe_status_lower.contains("laden")
+            || goe_status_lower.contains("charging")
+            || goe_status_lower.contains("ladebetrieb");
         let status_indicates_absent = goe_status_lower.contains("nicht verbunden")
             || goe_status_lower.contains("disconnected")
             || goe_status_lower.contains("deactivated");
@@ -467,7 +470,7 @@ impl DashboardService {
             } else {
                 "Auto voll".to_string()
             }
-        } else if car_connected {
+        } else if car_connected || status_car_loading {
             "Angeschlossen".to_string()
         } else {
             "Nicht angeschlossen".to_string()

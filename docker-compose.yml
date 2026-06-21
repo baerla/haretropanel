@@ -22,3 +22,5 @@ services:
       - ./data:/app/data
 
     restart: unless-stopped
+
+    network_mode: host
