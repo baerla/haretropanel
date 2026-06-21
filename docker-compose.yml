@@ -8,6 +8,7 @@ services:
       - .env.local
 
     environment:
+      TZ: Europe/Berlin
       HARETROPANEL_PORT: "8080"
       HARETROPANEL_LOG_DIR: "/app/logs"
       HARETROPANEL_LOG_ROTATION: "daily"

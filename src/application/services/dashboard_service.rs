@@ -293,12 +293,13 @@ impl DashboardService {
                 if age_mins > history_minutes * 60 {
                     continue;
                 }
-                if let Some(local) = DateTime::from_timestamp(
+                if let Some(utc_dt) = DateTime::from_timestamp(
                     ts.duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_secs() as i64,
                     0,
                 ) {
+                    let local = utc_dt.with_timezone(&Local);
                     let hour = local.hour();
                     if (hour >= 21 || hour < 6) && *watts <= 0.0 {
                         continue;
@@ -555,7 +556,7 @@ impl DashboardService {
                             if age_mins > 60 {
                                 continue;
                             }
-                            if let Some(dt) = DateTime::from_timestamp(
+                            if let Some(utc_dt) = DateTime::from_timestamp(
                                 sample
                                     .timestamp
                                     .duration_since(std::time::UNIX_EPOCH)
@@ -563,7 +564,8 @@ impl DashboardService {
                                     .as_secs() as i64,
                                 0,
                             ) {
-                                labels.push(format!("{:02}:{:02}", dt.hour(), dt.minute()));
+                                let local = utc_dt.with_timezone(&Local);
+                                labels.push(format!("{:02}:{:02}", local.hour(), local.minute()));
                             }
                             buffer_top.push(sample.buffer_top);
                             buffer_bottom.push(sample.buffer_bottom);
