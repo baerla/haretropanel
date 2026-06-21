@@ -94,46 +94,6 @@ impl HaHttpClient {
             .map_err(|e| AppError::Internal(format!("Invalid HA_BASE_URL: {e}")))
     }
 
-    fn map_entity_kind(entity_id: &str) -> EntityKind {
-        if entity_id.starts_with("light.") {
-            EntityKind::Light
-        } else if entity_id.starts_with("switch.") {
-            EntityKind::Switch
-        } else if entity_id.starts_with("climate.") {
-            EntityKind::Climate
-        } else if entity_id.starts_with("script.") {
-            EntityKind::Script
-        } else if entity_id.starts_with("cover.") {
-            EntityKind::Cover
-        } else {
-            EntityKind::Sensor
-        }
-    }
-
-    fn is_on_state(kind: &EntityKind, state: &str) -> bool {
-        match kind {
-            EntityKind::Light | EntityKind::Switch => state == "on",
-            EntityKind::Climate => matches!(state, "heat" | "cool" | "heat_cool" | "auto"),
-            EntityKind::Sensor => matches!(state, "on" | "open" | "home" | "above_horizon"),
-            EntityKind::Script => state == "on",
-            EntityKind::Cover => matches!(state, "open" | "opening"),
-        }
-    }
-
-    fn build_value(kind: &EntityKind, state: &str, ha: &HaStateResponse) -> Option<String> {
-        match kind {
-            EntityKind::Sensor | EntityKind::Climate | EntityKind::Cover => {
-                if let Some(unit) = &ha.attributes.unit_of_measurement {
-                    Some(format!("{state} {unit}"))
-                } else {
-                    Some(state.to_string())
-                }
-            }
-            EntityKind::Script => Some(state.to_string()),
-            EntityKind::Light | EntityKind::Switch => None,
-        }
-    }
-
     fn build_entity(ha: HaStateResponse) -> Entity {
         let kind = entity_kind_from_id(&ha.entity_id);
 

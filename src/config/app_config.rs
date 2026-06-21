@@ -165,19 +165,6 @@ impl AppConfig {
                 AppError::Config(format!("Invalid HARETROPANEL_CACHE_TTL_DEFAULT_SECS: {e}"))
             })?;
 
-        // Helper closure to read optional u64 env vars.
-        fn read_optional_u64(name: &str) -> AppResult<Option<u64>> {
-            match env::var(name) {
-                Ok(raw) => {
-                    let value = raw
-                        .parse()
-                        .map_err(|e| AppError::Config(format!("Invalid {name}: {e}")))?;
-                    Ok(Some(value))
-                }
-                Err(_) => Ok(None),
-            }
-        }
-
         let dashboard_cache_ttl_light_secs = env::var("HARETROPANEL_CACHE_TTL_LIGHT_SECS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok().filter(|v| *v > 0).and_then(NonZeroU64::new))
