@@ -32,7 +32,7 @@
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 20px 24px 40px;
+            padding: 0.2rem 1rem 0;
         }
 
         .dashboard {
@@ -125,7 +125,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 16px;
+            margin-bottom: 0.4rem;
         }
 
         .panel-wide {
@@ -374,8 +374,9 @@
             padding: 16px 20px;
             border-radius: 16px;
             display: flex;
-            flex-direction: column;
             gap: 6px;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .pump-tile h3 {
@@ -418,10 +419,6 @@
             color: var(--danger);
         }
 
-        .buffer-temp-panel .panel-header {
-            margin-bottom: 14px;
-        }
-
         .buffer-temp-chart {
             height: 220px;
             background: rgba(15, 20, 30, 0.6);
@@ -437,10 +434,6 @@
         }
 
         @media (max-width: 900px) {
-            .container {
-                padding: 16px;
-            }
-
             .header {
                 flex-direction: column;
                 align-items: flex-start;

@@ -9,17 +9,18 @@
             <div class="title">Solar Dashboard</div>
             <!--<div class="subtitle">Live production & charging status</div>-->
         </div>
+
+        <div class="last-updated">Letztes Update: {{ dashboard.last_updated }}</div>
+
+        {% if dashboard.demo_mode %}
+        <div class="demo-banner">Demo mode enabled</div>
+        {% endif %}
+
         <div class="header-actions">
             <a href="/?force_refresh=1" class="header-link">Aktualisieren</a>
             <a href="/settings/entities" class="header-link" style="display: none">Einstellungen</a>
         </div>
     </header>
-
-    {% if dashboard.demo_mode %}
-    <div class="demo-banner">Demo mode enabled</div>
-    {% endif %}
-
-    <div class="last-updated">Letztes Update: {{ dashboard.last_updated }}</div>
 
     {% if dashboard.page_tabs.len() > 1 %}
     <div class="page-tabs">
@@ -73,7 +74,7 @@
             <div id="pump-tile" class="pump-tile {{ dashboard.pump_status.css_class }}">
                 <h3>🔄 Solarpumpe</h3>
                 <div id="pump-state" class="pump-state">{{ dashboard.pump_status.status_label }}</div>
-                <div id="pump-info" style="font-size: 13px; color: var(--muted); text-align: right; margin-top: 8px;">
+                <div id="pump-info" style="font-size: 13px; color: var(--muted); text-align: right;">
                     {% if dashboard.pump_status.pump_on %}
                         {% if dashboard.pump_status.is_correct %}✅ Heat flowing into buffer
                         {% else %}❌ No heat transfer
