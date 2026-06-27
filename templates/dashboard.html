@@ -17,7 +17,7 @@
         {% endif %}
 
         <div class="header-actions">
-            <a href="/?force_refresh=1" class="header-link">Aktualisieren</a>
+            <a href="#" onclick="wsSend({action:'force_refresh'});return false;" class="header-link">Aktualisieren</a>
             <a href="/settings/entities" class="header-link" style="display: none">Einstellungen</a>
         </div>
     </header>
@@ -100,23 +100,13 @@
             <div id="garage-left-wrapper" class="garage-card">
                 <div class="garage-name">{{ dashboard.garage_left.name }}</div>
                 <div class="garage-state status">{{ dashboard.garage_left.status_label }}</div>
-                <form method="post" action="/toggle">
-                    <input type="hidden" name="entity_id" value="{{ dashboard.garage_left.id }}">
-                    <button type="submit" class="{{ dashboard.garage_left.button_class }}">
-                        {{ dashboard.garage_left.action_label }}
-                    </button>
-                </form>
+                <button type="button" class="{{ dashboard.garage_left.button_class }}" onclick="wsSend({action:'toggle',entity_id:'{{ dashboard.garage_left.id }}'})">{{ dashboard.garage_left.action_label }}</button>
             </div>
 
             <div id="garage-right-wrapper" class="garage-card">
                 <div class="garage-name">{{ dashboard.garage_right.name }}</div>
                 <div class="garage-state status">{{ dashboard.garage_right.status_label }}</div>
-                <form method="post" action="/toggle">
-                    <input type="hidden" name="entity_id" value="{{ dashboard.garage_right.id }}">
-                    <button type="submit" class="{{ dashboard.garage_right.button_class }}">
-                        {{ dashboard.garage_right.action_label }}
-                    </button>
-                </form>
+                <button type="button" class="{{ dashboard.garage_right.button_class }}" onclick="wsSend({action:'toggle',entity_id:'{{ dashboard.garage_right.id }}'})">{{ dashboard.garage_right.action_label }}</button>
             </div>
         </div>
     </section>
@@ -136,10 +126,7 @@
                 <span class="status-badge is-off">OFF</span>
                 {% endif %}
             </div>
-            <form method="post" action="/toggle">
-                <input type="hidden" name="entity_id" value="{{ entity.id }}">
-                <button type="submit" class="toggle-btn">Toggle</button>
-            </form>
+            <button type="button" class="toggle-btn" onclick="wsSend({action:'toggle',entity_id:'{{ entity.id }}'})">Toggle</button>
         </div>
     </section>
     {% elif entity.can_run_script %}
@@ -154,10 +141,7 @@
                 <span class="value">{{ entity.value }}</span>
                 {% endif %}
             </div>
-            <form method="post" action="/run_script">
-                <input type="hidden" name="entity_id" value="{{ entity.id }}">
-                <button type="submit" class="script-btn">Run</button>
-            </form>
+            <button type="button" class="script-btn" onclick="wsSend({action:'run_script',entity_id:'{{ entity.id }}'})">Run</button>
         </div>
     </section>
     {% elif entity.can_toggle_cover %}
@@ -174,10 +158,7 @@
                 <span class="status-badge is-off">Geschlossen</span>
                 {% endif %}
             </div>
-            <form method="post" action="/toggle">
-                <input type="hidden" name="entity_id" value="{{ entity.id }}">
-                <button type="submit" class="toggle-btn">Toggle</button>
-            </form>
+            <button type="button" class="toggle-btn" onclick="wsSend({action:'toggle',entity_id:'{{ entity.id }}'})">Toggle</button>
         </div>
     </section>
     {% else %}
@@ -449,6 +430,11 @@
                 if (statusEl) statusEl.textContent = data.status;
                 if (actionEl) actionEl.textContent = data.action;
                 if (btnEl) btnEl.setAttribute('class', data.button_class);
+            }
+
+            function wsSend(cmd) {
+                if (!socket || socket.readyState !== WebSocket.OPEN) return;
+                socket.send(JSON.stringify(cmd));
             }
 
             function connect() {

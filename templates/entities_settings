@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Entity Settings{% endblock %}
+
+{% block content %}
+<h1>Entity Settings</h1>
+<p>
+    Select which entities should appear on the main dashboard and
+    assign each entity to a page (like tabs in Home Assistant).
+    Page numbers start from <strong>1</strong>.
+</p>
+
+<form id="settings-form">
+    <table>
+        <thead>
+            <tr>
+                <th>Visible</th>
+                <th>Page</th>
+                <th>Entity Name</th>
+                <th>Entity ID</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entity in entities %}
+            <tr>
+                <td style="text-align: center;">
+                    <input
+                        type="checkbox"
+                        name="visible"
+                        value="{{ entity.id }}"
+                        {% if entity.is_selected %}checked{% endif %}
+                    >
+                </td>
+                <td>
+                    <input
+                        type="number"
+                        name="page_{{ entity.id }}"
+                        value="{{ entity.page }}"
+                        min="1"
+                        style="width: 4rem;"
+                    >
+                </td>
+                <td>{{ entity.name }}</td>
+                <td><code>{{ entity.id }}</code></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div style="margin-top: 1rem;">
+        <button type="button" onclick="saveSettings()">Save</button>
+        <a href="/" style="margin-left: 1rem;">Cancel</a>
+    </div>
+</form>
+
+<script>
+function saveSettings() {
+    var visible = [];
+    document.querySelectorAll('input[name="visible"]:checked').forEach(function(cb) {
+        visible.push(cb.value);
+    });
+
+    var pages = {};
+    document.querySelectorAll('input[name^="page_"]').forEach(function(input) {
+        var entityId = input.name.substring(5);
+        var page = parseInt(input.value);
+        if (page >= 1) {
+            pages[entityId] = page;
+        }
+    });
+
+    if (window.wsSend) {
+        wsSend({action: 'save_settings', visible: visible, pages: pages});
+        alert('Settings saved!');
+    } else {
+        alert('Connection lost. Please try again.');
+    }
+}
+</script>
+{% endblock %}

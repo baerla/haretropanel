@@ -1,38 +1,23 @@
 use askama::Template;
 use axum::{
     extract::{Query, State},
-    response::{Html, IntoResponse, Redirect},
-    Form,
+    response::{Html, IntoResponse},
 };
 use serde::Deserialize;
-use tracing::info;
 
-use crate::{
-    domain::EntityId,
-    infrastructure::web::{
+use crate::infrastructure::web::{
         viewmodels::{
             BufferTempViewModel, ChargerViewModel, DashboardTemplate,
             DashboardViewModel, GarageDoorViewModel, PumpViewModel, SolarViewModel,
         },
         AppState,
-    },
-    shared::error::AppResult,
-};
+    };
+use crate::shared::error::AppResult;
 
 #[derive(Debug, Deserialize)]
 pub struct DashboardQuery {
     pub page: Option<usize>,
     pub force_refresh: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ToggleForm {
-    pub entity_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RunScriptForm {
-    pub entity_id: String,
 }
 
 pub async fn get_dashboard(
@@ -230,32 +215,4 @@ pub async fn get_dashboard(
 
     let rendered = template.render()?;
     Ok(Html(rendered))
-}
-
-pub async fn post_toggle(
-    State(state): State<AppState>,
-    Form(form): Form<ToggleForm>,
-) -> AppResult<impl IntoResponse> {
-    let id = EntityId(form.entity_id);
-    info!("Toggling entity via POST /toggle: {}", id);
-
-    state.dashboard_service.toggle_entity(&id).await?;
-
-    Ok(Redirect::to("/"))
-}
-
-pub async fn post_run_script(
-    State(state): State<AppState>,
-    Form(form): Form<RunScriptForm>,
-) -> AppResult<impl IntoResponse> {
-    let id = EntityId(form.entity_id);
-    info!("Running script via POST /run_script: {}", id);
-
-    state.dashboard_service.run_script(&id).await?;
-
-    Ok(Redirect::to("/"))
-}
-
-pub async fn get_redirect_to_root() -> impl IntoResponse {
-    Redirect::to("/")
 }
