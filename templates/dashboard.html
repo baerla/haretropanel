@@ -214,6 +214,17 @@
             gradient.addColorStop(0, 'rgba(100, 225, 255, 0.35)');
             gradient.addColorStop(1, 'rgba(100, 225, 255, 0.04)');
 
+            while (initialLabels.length > maxDataPoints) {
+                var labels = initialLabels;
+                var values = initialValues;
+                for (var i = 0; i < labels.length; i += 2) {
+                    labels[i / 2] = labels[i];
+                    values[i / 2] = values[i];
+                }
+                initialLabels = labels.slice(0, Math.ceil(labels.length / 2));
+                initialValues = values.slice(0, Math.ceil(values.length / 2));
+            }
+
             var chart = new Chart(ctx, {
                 type: 'line',
                 data: {
