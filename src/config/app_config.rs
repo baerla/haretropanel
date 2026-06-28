@@ -47,6 +47,9 @@ pub struct AppConfig {
     pub log_file: Option<String>,
     pub log_level: String,
 
+    // websocket auth
+    pub ws_auth_token: Option<String>,
+
     // dashboard cache (in-memory, per entity kind)
     pub dashboard_cache_ttl_default_secs: u64,
     pub dashboard_cache_ttl_light_secs: Option<u64>,
@@ -216,6 +219,9 @@ impl AppConfig {
             })
             .map(|v| v.get());
 
+        // ---- WebSocket auth token ----
+        let ws_auth_token = env::var("HARETROPANEL_WS_AUTH_TOKEN").ok();
+
         info!(
             demo_mode,
             solar_entity_id = ?solar_entity_id,
@@ -258,6 +264,7 @@ impl AppConfig {
             force_fetch_interval_secs,
             log_file,
             log_level,
+            ws_auth_token,
             dashboard_cache_ttl_default_secs,
             dashboard_cache_ttl_light_secs,
             dashboard_cache_ttl_switch_secs,
@@ -271,17 +278,25 @@ impl AppConfig {
 mod app_config_tests {
     use super::*;
 
-    /// Move .env out of the way and restore it after the test.
-    /// All config tests are in a single function to avoid parallelism issues with .env and env vars.
+    /// Temporarily disable .env loading during config tests to avoid
+    /// stale values from .env (e.g. HARETROPANEL_PORT=8081).
     #[test]
     fn test_all_config_scenarios() {
+        // Temporarily move .env out of the way so dotenvy won't load it
+        let env_path = std::path::Path::new(".env");
+        let backup_path = std::path::Path::new(".env.disabled_for_test");
+        let moved = if env_path.exists() {
+            std::fs::rename(env_path, backup_path).is_ok()
+        } else {
+            false
+        };
+
         let clear_all = || {
             // Clear all HARETROPANEL_* and HA_* vars that from_env() reads
             for var in std::env::vars() {
                 if var.0.starts_with("HARETROPANEL_")
                     || var.0 == "HA_BASE_URL"
                     || var.0 == "HA_TOKEN"
-                    || var.0 == "DOTENV_FILE"
                 {
                     env::remove_var(&var.0);
                 }
@@ -388,5 +403,10 @@ mod app_config_tests {
         // 12. Debug display
         let debug_str = format!("{cfg:?}");
         assert!(debug_str.contains("AppConfig"));
+
+        // Restore .env
+        if moved {
+            let _ = std::fs::rename(backup_path, env_path);
+        }
     }
 }

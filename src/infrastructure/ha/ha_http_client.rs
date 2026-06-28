@@ -251,7 +251,10 @@ mod tests {
 
     #[test]
     fn test_entity_kind_from_id_sensor_fallback() {
-        assert_eq!(entity_kind_from_id("binary_sensor.motion"), EntityKind::Sensor);
+        assert_eq!(
+            entity_kind_from_id("binary_sensor.motion"),
+            EntityKind::Sensor
+        );
         assert_eq!(entity_kind_from_id("zone.home"), EntityKind::Sensor);
         assert_eq!(entity_kind_from_id("unknown.domain"), EntityKind::Sensor);
     }
@@ -432,6 +435,7 @@ mod tests {
             solar_max_watts: 0.0,
             solar_sample_secs: 60,
             force_fetch_interval_secs: 120,
+            ws_auth_token: None,
         }
     }
 
@@ -513,9 +517,7 @@ mod tests {
             client: Client::new(),
         };
 
-        let result = client
-            .run_script(&EntityId("light.lamp".to_string()))
-            .await;
+        let result = client.run_script(&EntityId("light.lamp".to_string())).await;
 
         assert!(result.is_err());
     }

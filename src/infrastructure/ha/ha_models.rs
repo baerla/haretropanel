@@ -35,7 +35,10 @@ mod tests {
         let resp: HaStateResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.entity_id, "light.lamp");
         assert_eq!(resp.state, "on");
-        assert_eq!(resp.attributes.friendly_name, Some("Living Room Lamp".to_string()));
+        assert_eq!(
+            resp.attributes.friendly_name,
+            Some("Living Room Lamp".to_string())
+        );
     }
 
     #[test]
@@ -56,7 +59,8 @@ mod tests {
 
     #[test]
     fn test_ha_state_response_missing_friendly_name() {
-        let json = r#"{"entity_id": "light.bulb", "state": "on", "attributes": {"brightness": 255}}"#;
+        let json =
+            r#"{"entity_id": "light.bulb", "state": "on", "attributes": {"brightness": 255}}"#;
         let resp: HaStateResponse = serde_json::from_str(json).unwrap();
         assert!(resp.attributes.friendly_name.is_none());
     }

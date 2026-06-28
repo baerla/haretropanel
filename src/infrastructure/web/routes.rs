@@ -1,4 +1,4 @@
-use axum::{Router, routing::get};
+use axum::{routing::get, Router};
 
 use crate::infrastructure::web::handlers::dashboard_handler::get_dashboard;
 use crate::infrastructure::web::handlers::settings_handler::get_entity_settings;

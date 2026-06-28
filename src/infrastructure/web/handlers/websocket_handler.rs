@@ -1,5 +1,7 @@
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::FromRequest;
+use axum::http::header::AUTHORIZATION;
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
 use tracing::{error, info, warn};
@@ -7,6 +9,123 @@ use tracing::{error, info, warn};
 use crate::application::services::DashboardService;
 use crate::infrastructure::web::viewhelpers;
 use crate::infrastructure::web::AppState;
+
+/// Parse a query parameter value from a query string.
+fn query_param(query: Option<&str>, key: &str) -> Option<String> {
+    query?
+        .split('&')
+        .find_map(|p| p.strip_prefix(&format!("{key}=")))
+        .and_then(|v| {
+            v.splitn(2, '=')
+                .last()
+                .map(|s| s.to_string())
+        })
+}
+
+/// Parse a Bearer token from an Authorization header.
+fn bearer_token(headers: &axum::http::HeaderMap) -> Option<String> {
+    headers
+        .get(AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .map(|s| s.to_string())
+}
+
+/// Validate the WebSocket auth token. Returns true if auth passes or is not configured.
+fn check_ws_auth(headers: &axum::http::HeaderMap, uri: &axum::http::Uri, expected_token: &str) -> bool {
+    let auth = bearer_token(headers)
+        .or(query_param(uri.query(), "token"))
+        .unwrap_or_default();
+    auth == expected_token
+}
+
+pub async fn ws_solar(
+    State(state): State<AppState>,
+    request: axum::extract::Request,
+) -> impl IntoResponse {
+    // Check auth before upgrading
+    let expected_token = state
+        .dashboard_service
+        .config()
+        .ws_auth_token
+        .clone();
+    if let Some(ref token) = expected_token {
+        if !check_ws_auth(request.headers(), request.uri(), token) {
+            return axum::http::StatusCode::UNAUTHORIZED.into_response();
+        }
+    }
+
+    // Upgrade the connection
+    let upgrade = match WebSocketUpgrade::from_request(request, &state).await {
+        Ok(u) => u,
+        Err(rejection) => return rejection.into_response(),
+    };
+
+    upgrade.on_upgrade(move |socket| handle_socket(socket, state))
+}
+
+async fn handle_socket(socket: WebSocket, state: AppState) {
+    info!("WebSocket client connected to /ws/solar");
+
+    let (socket_sink, socket_stream) = socket.split();
+    let mut broadcast_rx = state.dashboard_service.subscribe_to_ws();
+
+    // Single channel for all outgoing messages (broadcast + command responses)
+    let (outgoing_tx, outgoing_rx) = tokio::sync::mpsc::channel::<Message>(64);
+
+    // Task 1: broadcast → outgoing channel
+    let broadcast_tx = outgoing_tx.clone();
+    let broadcast_handle = tokio::spawn(async move {
+        loop {
+            match broadcast_rx.recv().await {
+                Ok(payload) => {
+                    let msg = Message::Text(payload.to_string().into());
+                    if broadcast_tx.send(msg).await.is_err() {
+                        break; // receiver dropped
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!("WebSocket lagged behind, skipped {} messages", n);
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    break;
+                }
+            }
+        }
+    });
+
+    // Task 2: handle client commands → outgoing channel
+    let cmd_tx = outgoing_tx.clone();
+    let service = state.dashboard_service.clone();
+    let mut stream = socket_stream;
+    while let Some(Ok(msg)) = stream.next().await {
+        if let Message::Text(text) = msg {
+            let payload = handle_client_command(&text, &service).await;
+            let response_msg = Message::Text(payload.to_string().into());
+            if cmd_tx.send(response_msg).await.is_err() {
+                warn!("Failed to send WS command response: channel closed");
+                break;
+            }
+        }
+    }
+
+    // Client disconnected: abort broadcast task to stop the zombie,
+    // then drain any remaining messages through the sink.
+    broadcast_handle.abort();
+    drop(cmd_tx);
+    drop(outgoing_tx);
+
+    // Drain remaining messages to the WebSocket sink
+    let mut sink = socket_sink;
+    let mut rx = outgoing_rx;
+    while let Some(msg) = rx.recv().await {
+        if sink.send(msg).await.is_err() {
+            break;
+        }
+    }
+
+    info!("WebSocket client disconnected from /ws/solar");
+}
 
 #[cfg(test)]
 mod tests {
@@ -176,72 +295,6 @@ enum ClientCommand {
     ForceRefresh {},
 }
 
-pub async fn ws_solar(State(state): State<AppState>, ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
-}
-
-async fn handle_socket(socket: WebSocket, state: AppState) {
-    info!("WebSocket client connected to /ws/solar");
-
-    let (socket_sink, socket_stream) = socket.split();
-    let mut broadcast_rx = state.dashboard_service.subscribe_to_ws();
-
-    // Single channel for all outgoing messages (broadcast + command responses)
-    let (outgoing_tx, outgoing_rx) = tokio::sync::mpsc::channel::<Message>(64);
-
-    // Task 1: send all outgoing messages to the WebSocket
-    tokio::spawn(async move {
-        let mut sink = socket_sink;
-        let mut rx = outgoing_rx;
-        while let Some(msg) = rx.recv().await {
-            if sink.send(msg).await.is_err() {
-                break;
-            }
-        }
-    });
-
-    // Task 2: broadcast channel → outgoing channel
-    let broadcast_tx = outgoing_tx.clone();
-    tokio::spawn(async move {
-        loop {
-            match broadcast_rx.recv().await {
-                Ok(payload) => {
-                    let msg = Message::Text(payload.to_string().into());
-                    if broadcast_tx.send(msg).await.is_err() {
-                        break; // sender dropped
-                    }
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                    tracing::warn!("WebSocket lagged behind, skipped {} messages", n);
-                }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                    break;
-                }
-            }
-        }
-    });
-
-    // Task 3: handle client commands → outgoing channel
-    let cmd_tx = outgoing_tx.clone();
-    let service = state.dashboard_service.clone();
-    tokio::spawn(async move {
-        let mut stream = socket_stream;
-        while let Some(Ok(msg)) = stream.next().await {
-            if let Message::Text(text) = msg {
-                let payload = handle_client_command(&text, &service).await;
-                let response_msg = Message::Text(payload.to_string().into());
-                if cmd_tx.send(response_msg).await.is_err() {
-                    warn!("Failed to send WS command response: channel closed");
-                    break;
-                }
-            }
-        }
-    });
-
-    // Wait for client to disconnect (socket_stream exhausted)
-    info!("WebSocket client disconnected from /ws/solar");
-}
-
 async fn handle_client_command(text: &str, service: &DashboardService) -> serde_json::Value {
     let cmd: ClientCommand = match serde_json::from_str(text) {
         Ok(cmd) => cmd,
@@ -278,6 +331,11 @@ async fn handle_client_command(text: &str, service: &DashboardService) -> serde_
             }
         }
         ClientCommand::SaveSettings { visible, pages } => {
+            // Validate page numbers are >= 1 (1-based indexing)
+            let pages: std::collections::HashMap<String, usize> = pages
+                .into_iter()
+                .filter(|(_, p)| *p >= 1)
+                .collect();
             info!(
                 "WS save_settings: visible={}, pages={}",
                 visible.len(),
@@ -285,7 +343,7 @@ async fn handle_client_command(text: &str, service: &DashboardService) -> serde_
             );
             let ids: Vec<crate::domain::EntityId> = visible
                 .into_iter()
-                .map(|s| crate::domain::EntityId(s))
+                .map(crate::domain::EntityId)
                 .collect();
             if let Err(e) = service.save_visible_entities(ids).await {
                 error!("WS save visible failed: {}", e);

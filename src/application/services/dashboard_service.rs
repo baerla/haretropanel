@@ -1,9 +1,9 @@
+use chrono::prelude::*;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
-use chrono::prelude::*;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Timelike};
@@ -12,7 +12,9 @@ use tokio::sync::RwLock;
 use crate::{
     application::ports::HomeAssistantClient,
     domain::{DashboardState, Entity, EntityId, EntityKind},
-    infrastructure::web::viewmodels::{BufferTempChartPoints, ChargerState, PumpViewModel, SolarChartPoints},
+    infrastructure::web::viewmodels::{
+        BufferTempChartPoints, ChargerState, PumpViewModel, SolarChartPoints,
+    },
     shared::error::AppResult,
 };
 
@@ -121,43 +123,60 @@ impl DashboardService {
                     let charger_state = arc.compute_car_state(&dashboard_state).await;
                     let buffer_chart_points = arc.compute_buffer_temp_chart().await;
                     let buffer_labels = buffer_chart_points.labels;
-                    let buffer_top_vals: Vec<String> = buffer_chart_points.buffer_top.iter().map(|v| format!("{:.1}", v)).collect();
-                    let buffer_bottom_vals: Vec<String> = buffer_chart_points.buffer_bottom.iter().map(|v| format!("{:.1}", v)).collect();
-                    let solar_flow_vals: Vec<String> = buffer_chart_points.solar_flow.iter().map(|v| format!("{:.1}", v)).collect();
-                    let solar_return_vals: Vec<String> = buffer_chart_points.solar_return.iter().map(|v| format!("{:.1}", v)).collect();
+                    let buffer_top_vals: Vec<String> = buffer_chart_points
+                        .buffer_top
+                        .iter()
+                        .map(|v| format!("{:.1}", v))
+                        .collect();
+                    let buffer_bottom_vals: Vec<String> = buffer_chart_points
+                        .buffer_bottom
+                        .iter()
+                        .map(|v| format!("{:.1}", v))
+                        .collect();
+                    let solar_flow_vals: Vec<String> = buffer_chart_points
+                        .solar_flow
+                        .iter()
+                        .map(|v| format!("{:.1}", v))
+                        .collect();
+                    let solar_return_vals: Vec<String> = buffer_chart_points
+                        .solar_return
+                        .iter()
+                        .map(|v| format!("{:.1}", v))
+                        .collect();
                     let pump_status = arc.compute_pump_status(&dashboard_state);
 
-                    let make_garage_status = |entity_id: &str, default_name: &str| -> serde_json::Value {
-                        dashboard_state
-                            .entities
-                            .iter()
-                            .find(|e| e.id.0 == entity_id)
-                            .map(|e| {
-                                let is_open = e.is_on;
-                                let name = e.name.clone();
-                                let status = if is_open { "Offen" } else { "Geschlossen" };
-                                let action = if is_open { "Schließen" } else { "Öffnen" };
-                                let button_class = if is_open {
-                                    "garage-btn garage-open"
-                                } else {
-                                    "garage-btn garage-closed"
-                                };
-                                serde_json::json!({
-                                    "name": name,
-                                    "status": status,
-                                    "action": action,
-                                    "button_class": button_class,
+                    let make_garage_status =
+                        |entity_id: &str, default_name: &str| -> serde_json::Value {
+                            dashboard_state
+                                .entities
+                                .iter()
+                                .find(|e| e.id.0 == entity_id)
+                                .map(|e| {
+                                    let is_open = e.is_on;
+                                    let name = e.name.clone();
+                                    let status = if is_open { "Offen" } else { "Geschlossen" };
+                                    let action = if is_open { "Schließen" } else { "Öffnen" };
+                                    let button_class = if is_open {
+                                        "garage-btn garage-open"
+                                    } else {
+                                        "garage-btn garage-closed"
+                                    };
+                                    serde_json::json!({
+                                        "name": name,
+                                        "status": status,
+                                        "action": action,
+                                        "button_class": button_class,
+                                    })
                                 })
-                            })
-                            .unwrap_or_else(|| {
-                                serde_json::json!({
-                                    "name": default_name,
-                                    "status": "Geschlossen",
-                                    "action": "Öffnen",
-                                    "button_class": "garage-btn garage-closed",
+                                .unwrap_or_else(|| {
+                                    serde_json::json!({
+                                        "name": default_name,
+                                        "status": "Geschlossen",
+                                        "action": "Öffnen",
+                                        "button_class": "garage-btn garage-closed",
+                                    })
                                 })
-                            })
-                    };
+                        };
 
                     let payload = serde_json::json!({
                         "watts": solar_watts,
@@ -268,7 +287,10 @@ impl DashboardService {
                     .parse::<f64>()
                 {
                     let mut history = self.solar_history.write().await;
-                    history.push_back(SolarSample { timestamp: SystemTime::now(), watts });
+                    history.push_back(SolarSample {
+                        timestamp: SystemTime::now(),
+                        watts,
+                    });
 
                     let max_age = Duration::from_secs(self.config.solar_history_minutes * 60);
                     while let Some(front) = history.front() {
@@ -398,7 +420,8 @@ impl DashboardService {
                 ) {
                     let local = utc_dt.with_timezone(&Local);
                     let hour = local.hour();
-                    if (hour >= 21 || hour < 6) && *watts <= 0.0 {
+                    let in_night_hours = !(21..24).contains(&hour) || !(6..21).contains(&hour);
+                    if in_night_hours && *watts <= 0.0 {
                         continue;
                     }
                     labels.push(format!("{:02}:{:02}", hour, local.minute()));
@@ -415,10 +438,22 @@ impl DashboardService {
     pub async fn compute_car_state(&self, state: &DashboardState) -> ChargerState {
         let cfg = self.config();
 
-        let charger_entity = state.entities.iter().find(|e| e.id.0 == cfg.charger_current_entity_id);
-        let goe_status_entity = state.entities.iter().find(|e| e.id.0 == cfg.goe_status_entity_id);
-        let car_connected_entity = state.entities.iter().find(|e| e.id.0 == cfg.goe_car_connected_entity_id);
-        let goe_charging_entity = state.entities.iter().find(|e| e.id.0 == cfg.goe_charging_entity_id);
+        let charger_entity = state
+            .entities
+            .iter()
+            .find(|e| e.id.0 == cfg.charger_current_entity_id);
+        let goe_status_entity = state
+            .entities
+            .iter()
+            .find(|e| e.id.0 == cfg.goe_status_entity_id);
+        let car_connected_entity = state
+            .entities
+            .iter()
+            .find(|e| e.id.0 == cfg.goe_car_connected_entity_id);
+        let goe_charging_entity = state
+            .entities
+            .iter()
+            .find(|e| e.id.0 == cfg.goe_charging_entity_id);
 
         let charger_value = charger_entity
             .as_ref()
@@ -460,23 +495,6 @@ impl DashboardService {
         let energy_stable = self.is_goe_energy_stable().await;
         let car_present = car_connected || !status_indicates_absent;
 
-        eprintln!("=== compute_car_state DEBUG ===");
-        eprintln!("  charger_current_entity_id={:?} → value={:?}", cfg.charger_current_entity_id, charger_entity.as_ref().and_then(|e| e.value.as_ref()));
-        eprintln!("  goe_status_entity_id={:?} → value={:?}", cfg.goe_status_entity_id, goe_status_entity.as_ref().and_then(|e| e.value.as_ref()));
-        eprintln!("  goe_car_connected_entity_id={:?} → value={:?}", cfg.goe_car_connected_entity_id, car_connected_entity.as_ref().and_then(|e| e.value.as_ref()));
-        eprintln!("  goe_charging_entity_id={:?} → value={:?}", cfg.goe_charging_entity_id, goe_charging_entity.as_ref().and_then(|e| e.value.as_ref()));
-        eprintln!("  charger_value={}", charger_value);
-        eprintln!("  goe_status={}", goe_status);
-        eprintln!("  goe_status_lower={}", goe_status_lower);
-        eprintln!("  paused={}", paused);
-        eprintln!("  car_connected={}", car_connected);
-        eprintln!("  car_charging={}", car_charging);
-        eprintln!("  status_car_loading={}", status_car_loading);
-        eprintln!("  status_indicates_absent={}", status_indicates_absent);
-        eprintln!("  status_indicates_finished={}", status_indicates_finished);
-        eprintln!("  energy_stable={}", energy_stable);
-        eprintln!("  car_present={}", car_present);
-
         let car_state_label = if !car_present
             || status_indicates_absent
             || (status_indicates_finished && energy_stable)
@@ -500,9 +518,16 @@ impl DashboardService {
             "is-empty".to_string()
         };
 
-        eprintln!("  car_state_label={}", car_state_label);
-        eprintln!("  car_state_class={}", car_state_class);
-        eprintln!("=== compute_car_state END ===\n");
+        tracing::debug!(
+            charger_value,
+            goe_status,
+            paused,
+            car_connected,
+            car_charging,
+            car_state_label,
+            car_state_class,
+            "compute_car_state"
+        );
 
         ChargerState {
             charger_value,
@@ -617,7 +642,8 @@ impl DashboardService {
         let find = |id: &str| state.entities.iter().find(|e| e.id.0 == id);
 
         let buffer_top = find(&cfg.solar_buffer_top_entity_id).and_then(|e| e.value.as_deref());
-        let buffer_bottom = find(&cfg.solar_buffer_bottom_entity_id).and_then(|e| e.value.as_deref());
+        let buffer_bottom =
+            find(&cfg.solar_buffer_bottom_entity_id).and_then(|e| e.value.as_deref());
         let solar_flow = find(&cfg.solar_flow_entity_id).and_then(|e| e.value.as_deref());
         let solar_return = find(&cfg.solar_return_entity_id).and_then(|e| e.value.as_deref());
 
@@ -653,63 +679,63 @@ impl DashboardService {
     }
 
     pub async fn compute_buffer_temp_chart(&self) -> BufferTempChartPoints {
-            let history = self.buffer_temp_history.try_read();
-            match history {
-                Ok(h) => {
-                    if h.is_empty() {
-                        return BufferTempChartPoints {
-                            labels: vec![],
-                            buffer_top: vec![],
-                            buffer_bottom: vec![],
-                            solar_flow: vec![],
-                            solar_return: vec![],
-                        };
-                    }
-                    let mut labels = Vec::with_capacity(h.len());
-                    let mut buffer_top = Vec::with_capacity(h.len());
-                    let mut buffer_bottom = Vec::with_capacity(h.len());
-                    let mut solar_flow = Vec::with_capacity(h.len());
-                    let mut solar_return = Vec::with_capacity(h.len());
+        let history = self.buffer_temp_history.try_read();
+        match history {
+            Ok(h) => {
+                if h.is_empty() {
+                    return BufferTempChartPoints {
+                        labels: vec![],
+                        buffer_top: vec![],
+                        buffer_bottom: vec![],
+                        solar_flow: vec![],
+                        solar_return: vec![],
+                    };
+                }
+                let mut labels = Vec::with_capacity(h.len());
+                let mut buffer_top = Vec::with_capacity(h.len());
+                let mut buffer_bottom = Vec::with_capacity(h.len());
+                let mut solar_flow = Vec::with_capacity(h.len());
+                let mut solar_return = Vec::with_capacity(h.len());
 
-                    for sample in h.iter() {
-                        if let Ok(elapsed) = SystemTime::now().duration_since(sample.timestamp) {
-                            let age_mins = elapsed.as_secs() / 60;
-                            if age_mins > self.config().solar_history_minutes {
-                                continue;
-                            }
-                            if let Some(utc_dt) = DateTime::from_timestamp(
-                                sample
-                                    .timestamp
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs() as i64,
-                                0,
-                            ) {
-                                let local = utc_dt.with_timezone(&Local);
-                                labels.push(format!("{:02}:{:02}", local.hour(), local.minute()));
-                            }
-                            buffer_top.push(sample.buffer_top);
-                            buffer_bottom.push(sample.buffer_bottom);
-                            solar_flow.push(sample.solar_flow);
-                            solar_return.push(sample.solar_return);
+                for sample in h.iter() {
+                    if let Ok(elapsed) = SystemTime::now().duration_since(sample.timestamp) {
+                        let age_mins = elapsed.as_secs() / 60;
+                        if age_mins > self.config().solar_history_minutes {
+                            continue;
                         }
-                    }
-                    BufferTempChartPoints {
-                        labels,
-                        buffer_top,
-                        buffer_bottom,
-                        solar_flow,
-                        solar_return,
+                        if let Some(utc_dt) = DateTime::from_timestamp(
+                            sample
+                                .timestamp
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs() as i64,
+                            0,
+                        ) {
+                            let local = utc_dt.with_timezone(&Local);
+                            labels.push(format!("{:02}:{:02}", local.hour(), local.minute()));
+                        }
+                        buffer_top.push(sample.buffer_top);
+                        buffer_bottom.push(sample.buffer_bottom);
+                        solar_flow.push(sample.solar_flow);
+                        solar_return.push(sample.solar_return);
                     }
                 }
-                Err(_) => BufferTempChartPoints {
-                    labels: vec![],
-                    buffer_top: vec![],
-                    buffer_bottom: vec![],
-                    solar_flow: vec![],
-                    solar_return: vec![],
-                },
+                BufferTempChartPoints {
+                    labels,
+                    buffer_top,
+                    buffer_bottom,
+                    solar_flow,
+                    solar_return,
+                }
             }
+            Err(_) => BufferTempChartPoints {
+                labels: vec![],
+                buffer_top: vec![],
+                buffer_bottom: vec![],
+                solar_flow: vec![],
+                solar_return: vec![],
+            },
+        }
     }
 
     pub fn compute_pump_status(&self, state: &DashboardState) -> PumpViewModel {
@@ -739,7 +765,11 @@ impl DashboardService {
         PumpViewModel {
             pump_on,
             is_correct,
-            status_label: if pump_on { "ON".to_string() } else { "OFF".to_string() },
+            status_label: if pump_on {
+                "ON".to_string()
+            } else {
+                "OFF".to_string()
+            },
             css_class: if is_correct {
                 if pump_on {
                     "pump-on".to_string()
@@ -769,7 +799,10 @@ mod tests {
 
     use super::{DashboardCacheConfig, DashboardLayoutRepository, DashboardService};
     use crate::{
-        application::ports::HomeAssistantClient, config::AppConfig, domain::{DashboardState, Entity, EntityId, EntityKind}, shared::error::AppResult
+        application::ports::HomeAssistantClient,
+        config::AppConfig,
+        domain::{DashboardState, Entity, EntityId, EntityKind},
+        shared::error::AppResult,
     };
 
     struct FakeHaClient {
@@ -889,7 +922,12 @@ mod tests {
         };
         let ha = Arc::new(FakeHaClient::new(state));
         let repo = Arc::new(FakeLayoutRepo::new(Vec::new(), HashMap::new()));
-        let service = DashboardService::new(ha.clone(), repo, cache_config(60, None), AppConfig::from_env().unwrap());
+        let service = DashboardService::new(
+            ha.clone(),
+            repo,
+            cache_config(60, None),
+            AppConfig::from_env().unwrap(),
+        );
 
         let dashboard = service.get_dashboard().await.unwrap();
 
@@ -910,12 +948,20 @@ mod tests {
             vec![EntityId("light.kitchen".to_string())],
             HashMap::new(),
         ));
-        let service = DashboardService::new(ha, repo, cache_config(60, None), AppConfig::from_env().unwrap());
+        let service = DashboardService::new(
+            ha,
+            repo,
+            cache_config(60, None),
+            AppConfig::from_env().unwrap(),
+        );
 
         let dashboard = service.get_dashboard().await.unwrap();
 
         assert_eq!(dashboard.entities.len(), 1);
-        assert_eq!(dashboard.entities[0].id, EntityId("light.kitchen".to_string()));
+        assert_eq!(
+            dashboard.entities[0].id,
+            EntityId("light.kitchen".to_string())
+        );
     }
 
     #[tokio::test]
@@ -925,7 +971,12 @@ mod tests {
         };
         let ha = Arc::new(FakeHaClient::new(state));
         let repo = Arc::new(FakeLayoutRepo::new(Vec::new(), HashMap::new()));
-        let service = DashboardService::new(ha.clone(), repo, cache_config(60, None), AppConfig::from_env().unwrap());
+        let service = DashboardService::new(
+            ha.clone(),
+            repo,
+            cache_config(60, None),
+            AppConfig::from_env().unwrap(),
+        );
 
         let _ = service.get_dashboard_with_refresh(false).await.unwrap();
         assert_eq!(ha.fetch_count(), 1);
@@ -937,10 +988,7 @@ mod tests {
 
         let refreshed = service.get_dashboard_with_refresh(true).await.unwrap();
         assert_eq!(ha.fetch_count(), 2);
-        assert_eq!(
-            refreshed.entities[0].id,
-            EntityId("switch.fan".to_string())
-        );
+        assert_eq!(refreshed.entities[0].id, EntityId("switch.fan".to_string()));
     }
 
     #[tokio::test]
@@ -950,7 +998,12 @@ mod tests {
         };
         let ha = Arc::new(FakeHaClient::new(state));
         let repo = Arc::new(FakeLayoutRepo::new(Vec::new(), HashMap::new()));
-        let service = DashboardService::new(ha.clone(), repo, cache_config(60, None), AppConfig::from_env().unwrap());
+        let service = DashboardService::new(
+            ha.clone(),
+            repo,
+            cache_config(60, None),
+            AppConfig::from_env().unwrap(),
+        );
 
         let _ = service.get_all_entities().await.unwrap();
         let _ = service.get_all_entities().await.unwrap();
@@ -965,7 +1018,12 @@ mod tests {
         };
         let ha = Arc::new(FakeHaClient::new(state));
         let repo = Arc::new(FakeLayoutRepo::new(Vec::new(), HashMap::new()));
-        let service = DashboardService::new(ha.clone(), repo, cache_config(60, Some(1)), AppConfig::from_env().unwrap());
+        let service = DashboardService::new(
+            ha.clone(),
+            repo,
+            cache_config(60, Some(1)),
+            AppConfig::from_env().unwrap(),
+        );
 
         let _ = service.get_all_entities().await.unwrap();
 
@@ -978,10 +1036,7 @@ mod tests {
         let refreshed = service.get_all_entities().await.unwrap();
 
         assert_eq!(ha.fetch_count(), 2);
-        assert_eq!(
-            refreshed.entities[0].id,
-            EntityId("switch.fan".to_string())
-        );
+        assert_eq!(refreshed.entities[0].id, EntityId("switch.fan".to_string()));
     }
 
     #[tokio::test]
@@ -991,7 +1046,12 @@ mod tests {
         };
         let ha = Arc::new(FakeHaClient::new(state));
         let repo = Arc::new(FakeLayoutRepo::new(Vec::new(), HashMap::new()));
-        let service = DashboardService::new(ha.clone(), repo, cache_config(60, None), AppConfig::from_env().unwrap());
+        let service = DashboardService::new(
+            ha.clone(),
+            repo,
+            cache_config(60, None),
+            AppConfig::from_env().unwrap(),
+        );
 
         let _ = service.get_all_entities().await.unwrap();
         ha.set_state(DashboardState {
@@ -1006,14 +1066,8 @@ mod tests {
         let refreshed = service.get_all_entities().await.unwrap();
 
         assert_eq!(ha.fetch_count(), 2);
-        assert_eq!(
-            refreshed.entities[0].id,
-            EntityId("switch.fan".to_string())
-        );
-        assert_eq!(
-            ha.toggle_calls().await,
-            vec!["light.kitchen".to_string()]
-        );
+        assert_eq!(refreshed.entities[0].id, EntityId("switch.fan".to_string()));
+        assert_eq!(ha.toggle_calls().await, vec!["light.kitchen".to_string()]);
     }
 
     #[tokio::test]
@@ -1023,7 +1077,12 @@ mod tests {
         };
         let ha = Arc::new(FakeHaClient::new(state));
         let repo = Arc::new(FakeLayoutRepo::new(Vec::new(), HashMap::new()));
-        let service = DashboardService::new(ha.clone(), repo, cache_config(60, None), AppConfig::from_env().unwrap());
+        let service = DashboardService::new(
+            ha.clone(),
+            repo,
+            cache_config(60, None),
+            AppConfig::from_env().unwrap(),
+        );
 
         let _ = service.get_all_entities().await.unwrap();
         ha.set_state(DashboardState {
@@ -1042,9 +1101,6 @@ mod tests {
             refreshed.entities[0].id,
             EntityId("script.morning".to_string())
         );
-        assert_eq!(
-            ha.script_calls().await,
-            vec!["script.nightly".to_string()]
-        );
+        assert_eq!(ha.script_calls().await, vec!["script.nightly".to_string()]);
     }
 }

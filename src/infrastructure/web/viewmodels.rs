@@ -163,7 +163,13 @@ mod tests {
 
     use crate::domain::EntityId;
 
-    fn make_entity(id: &str, name: &str, kind: EntityKind, is_on: bool, value: Option<String>) -> Entity {
+    fn make_entity(
+        id: &str,
+        name: &str,
+        kind: EntityKind,
+        is_on: bool,
+        value: Option<String>,
+    ) -> Entity {
         Entity {
             id: EntityId::from(id),
             name: name.to_string(),
@@ -200,7 +206,13 @@ mod tests {
 
     #[test]
     fn test_viewmodel_from_sensor_with_value() {
-        let entity = make_entity("sensor.temp", "Temperature", EntityKind::Sensor, false, Some("22".to_string()));
+        let entity = make_entity(
+            "sensor.temp",
+            "Temperature",
+            EntityKind::Sensor,
+            false,
+            Some("22".to_string()),
+        );
         let vm = EntityViewModel::from(&entity);
         assert_eq!(vm.kind_label, "Sensor");
         assert!(vm.has_value);
@@ -211,7 +223,13 @@ mod tests {
 
     #[test]
     fn test_viewmodel_from_climate() {
-        let entity = make_entity("climate.home", "Thermostat", EntityKind::Climate, true, None);
+        let entity = make_entity(
+            "climate.home",
+            "Thermostat",
+            EntityKind::Climate,
+            true,
+            None,
+        );
         let vm = EntityViewModel::from(&entity);
         assert_eq!(vm.kind_label, "Climate");
         assert!(!vm.can_toggle);
@@ -220,7 +238,13 @@ mod tests {
 
     #[test]
     fn test_viewmodel_from_script() {
-        let entity = make_entity("script.away_mode", "Away Mode", EntityKind::Script, false, None);
+        let entity = make_entity(
+            "script.away_mode",
+            "Away Mode",
+            EntityKind::Script,
+            false,
+            None,
+        );
         let vm = EntityViewModel::from(&entity);
         assert_eq!(vm.kind_label, "Script");
         assert!(!vm.can_toggle);

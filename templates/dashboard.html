@@ -196,14 +196,15 @@
             gradient.addColorStop(1, 'rgba(100, 225, 255, 0.04)');
 
             while (initialLabels.length > maxDataPoints) {
-                var labels = initialLabels;
-                var values = initialValues;
-                for (var i = 0; i < labels.length; i += 2) {
-                    labels[i / 2] = labels[i];
-                    values[i / 2] = values[i];
+                var step = Math.ceil(initialLabels.length / maxDataPoints);
+                var newLabels = [];
+                var newValues = [];
+                for (var i = 0; i < initialLabels.length; i += step) {
+                    newLabels.push(initialLabels[i]);
+                    newValues.push(initialValues[i]);
                 }
-                initialLabels = labels.slice(0, Math.ceil(labels.length / 2));
-                initialValues = values.slice(0, Math.ceil(values.length / 2));
+                initialLabels = newLabels;
+                initialValues = newValues;
             }
 
             var chart = new Chart(ctx, {
@@ -328,6 +329,7 @@
             console.log('Solar WebSocket started');
 
             var socket = null;
+            var pendingMessages = [];
 
             function updateSolarData(data) {
                 console.log('Solar data updated:', data.watts, 'W');
@@ -433,12 +435,23 @@
             }
 
             function wsSend(cmd) {
-                if (!socket || socket.readyState !== WebSocket.OPEN) return;
-                socket.send(JSON.stringify(cmd));
+                var msg = JSON.stringify(cmd);
+                if (!socket || socket.readyState !== WebSocket.OPEN) {
+                    pendingMessages.push(msg);
+                    return;
+                }
+                socket.send(msg);
             }
 
             function connect() {
                 socket = new WebSocket('ws://' + location.host + '/ws/solar');
+
+                socket.onopen = function() {
+                    for (var i = 0; i < pendingMessages.length; i++) {
+                        socket.send(pendingMessages[i]);
+                    }
+                    pendingMessages = [];
+                };
 
                 socket.onmessage = function(event) {
                     try {

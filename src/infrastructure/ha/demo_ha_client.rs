@@ -154,10 +154,7 @@ impl DemoHaClient {
                 .iter()
                 .position(|e| e.id.0 == config.garage_left_status_entity_id)
             {
-                action_to_status.insert(
-                    config.garage_left_action_entity_id.clone(),
-                    status_idx,
-                );
+                action_to_status.insert(config.garage_left_action_entity_id.clone(), status_idx);
             }
         }
         if !config.garage_right_action_entity_id.is_empty()
@@ -168,10 +165,7 @@ impl DemoHaClient {
                 .iter()
                 .position(|e| e.id.0 == config.garage_right_status_entity_id)
             {
-                action_to_status.insert(
-                    config.garage_right_action_entity_id.clone(),
-                    status_idx,
-                );
+                action_to_status.insert(config.garage_right_action_entity_id.clone(), status_idx);
             }
         }
 

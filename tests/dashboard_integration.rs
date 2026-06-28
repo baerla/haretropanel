@@ -97,6 +97,7 @@ fn test_config() -> AppConfig {
         dashboard_cache_ttl_sensor_secs: None,
         dashboard_cache_ttl_climate_secs: None,
         force_fetch_interval_secs: 120,
+        ws_auth_token: None,
     }
 }
 
