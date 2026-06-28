@@ -17,7 +17,7 @@
         {% endif %}
 
         <div class="header-actions">
-            <a href="#" onclick="wsSend({action:'force_refresh'});return false;" class="header-link">Aktualisieren</a>
+            <a href="#" class="header-link refresh-btn">Aktualisieren</a>
             <a href="/settings/entities" class="header-link" style="display: none">Einstellungen</a>
         </div>
     </header>
@@ -100,13 +100,13 @@
             <div id="garage-left-wrapper" class="garage-card">
                 <div class="garage-name">{{ dashboard.garage_left.name }}</div>
                 <div class="garage-state status">{{ dashboard.garage_left.status_label }}</div>
-                <button type="button" class="{{ dashboard.garage_left.button_class }}" onclick="wsSend({action:'toggle',entity_id:'{{ dashboard.garage_left.id }}'})">{{ dashboard.garage_left.action_label }}</button>
+                <button type="button" class="{{ dashboard.garage_left.button_class }}" data-entity-id="{{ dashboard.garage_left.id }}">{{ dashboard.garage_left.action_label }}</button>
             </div>
 
             <div id="garage-right-wrapper" class="garage-card">
                 <div class="garage-name">{{ dashboard.garage_right.name }}</div>
                 <div class="garage-state status">{{ dashboard.garage_right.status_label }}</div>
-                <button type="button" class="{{ dashboard.garage_right.button_class }}" onclick="wsSend({action:'toggle',entity_id:'{{ dashboard.garage_right.id }}'})">{{ dashboard.garage_right.action_label }}</button>
+                <button type="button" class="{{ dashboard.garage_right.button_class }}" data-entity-id="{{ dashboard.garage_right.id }}">{{ dashboard.garage_right.action_label }}</button>
             </div>
         </div>
     </section>
@@ -126,7 +126,7 @@
                 <span class="status-badge is-off">OFF</span>
                 {% endif %}
             </div>
-            <button type="button" class="toggle-btn" onclick="wsSend({action:'toggle',entity_id:'{{ entity.id }}'})">Toggle</button>
+            <button type="button" class="toggle-btn" data-entity-id="{{ entity.id }}">Toggle</button>
         </div>
     </section>
     {% elif entity.can_run_script %}
@@ -141,7 +141,7 @@
                 <span class="value">{{ entity.value }}</span>
                 {% endif %}
             </div>
-            <button type="button" class="script-btn" onclick="wsSend({action:'run_script',entity_id:'{{ entity.id }}'})">Run</button>
+            <button type="button" class="script-btn" data-entity-id="{{ entity.id }}">Run</button>
         </div>
     </section>
     {% elif entity.can_toggle_cover %}
@@ -158,7 +158,7 @@
                 <span class="status-badge is-off">Geschlossen</span>
                 {% endif %}
             </div>
-            <button type="button" class="toggle-btn" onclick="wsSend({action:'toggle',entity_id:'{{ entity.id }}'})">Toggle</button>
+            <button type="button" class="toggle-btn" data-entity-id="{{ entity.id }}">Toggle</button>
         </div>
     </section>
     {% else %}
@@ -180,8 +180,125 @@
     {% endif %}
     {% endfor %}
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.min.js"></script>
+
+    <!-- Debug log panel -->
+    <button id="debugToggle" class="debug-toggle-fab" title="Toggle debug log">&#9881;</button>
+    <div id="debugPanel" class="debug-log-panel collapsed">
+        <div class="debug-log-header" id="debugHeader">
+            <span><span class="debug-log-title">Debug Log</span><span id="debugCount" class="debug-log-count">0</span></span>
+            <div class="debug-log-controls">
+                <button class="debug-log-btn" id="debugClear">Clear</button>
+                <button class="debug-log-btn" id="debugCollapse">[ ]</button>
+            </div>
+        </div>
+        <div id="debugBody" class="debug-log-body"></div>
+    </div>
+
     <script>
         (function () {
+            // ─── Frontend Debug Logger ───
+            var FL = {
+                entries: [],
+                max: 200,
+                enabled: true,
+                log: function (tag, msg) {
+                    if (!this.enabled) return;
+                    var now = new Date();
+                    var time = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+                    var level = 'log';
+                    this.entries.push({ time: time, tag: tag, msg: msg, level: level });
+                    this.flush();
+                },
+                info: function (tag, msg) {
+                    var now = new Date();
+                    var time = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+                    this.entries.push({ time: time, tag: tag, msg: msg, level: 'info' });
+                    this.flush();
+                },
+                warn: function (tag, msg) {
+                    var now = new Date();
+                    var time = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+                    this.entries.push({ time: time, tag: tag, msg: msg, level: 'warn' });
+                    this.flush();
+                },
+                error: function (tag, msg) {
+                    var now = new Date();
+                    var time = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+                    this.entries.push({ time: time, tag: tag, msg: msg, level: 'error' });
+                    this.flush();
+                },
+                success: function (tag, msg) {
+                    var now = new Date();
+                    var time = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+                    this.entries.push({ time: time, tag: tag, msg: msg, level: 'success' });
+                    this.flush();
+                },
+                flush: function () {
+                    if (this.entries.length > this.max) {
+                        this.entries = this.entries.slice(-this.max);
+                    }
+                    this.render();
+                },
+                clear: function () {
+                    this.entries = [];
+                    this.render();
+                },
+                render: function () {
+                    var body = document.getElementById('debugBody');
+                    var count = document.getElementById('debugCount');
+                    if (!body) return;
+                    count.textContent = this.entries.length;
+                    var html = '';
+                    for (var i = 0; i < this.entries.length; i++) {
+                        var e = this.entries[i];
+                        html += '<div class="debug-log-entry ' + e.level + '">'
+                            + '<span class="debug-log-time">' + e.time + '</span>'
+                            + '<span class="debug-log-tag">[' + e.tag + ']</span>'
+                            + e.msg + '</div>';
+                    }
+                    body.innerHTML = html;
+                    body.scrollTop = body.scrollHeight;
+                }
+            };
+
+            // Debug panel controls
+            var panel = document.getElementById('debugPanel');
+            var header = document.getElementById('debugHeader');
+            var collapseBtn = document.getElementById('debugCollapse');
+            var clearBtn = document.getElementById('debugClear');
+            var fab = document.getElementById('debugToggle');
+            if (header) {
+                header.addEventListener('click', function () {
+                    panel.classList.toggle('collapsed');
+                    if (panel.classList.contains('collapsed')) {
+                        fab.classList.remove('hidden');
+                        if (collapseBtn) collapseBtn.textContent = '[ + ]';
+                    } else {
+                        fab.classList.add('hidden');
+                        if (collapseBtn) collapseBtn.textContent = '[ - ]';
+                    }
+                });
+            }
+            if (collapseBtn) {
+                collapseBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    header.click();
+                });
+            }
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    FL.clear();
+                });
+            }
+            if (fab) {
+                fab.addEventListener('click', function () {
+                    panel.classList.remove('collapsed');
+                    fab.classList.add('hidden');
+                });
+            }
+
+            FL.info('INIT', 'Dashboard started');
             var ctx = document.getElementById('solarChart');
             if (!ctx || !window.Chart) {
                 console.error('Chart.js not loaded or canvas not found');
@@ -190,6 +307,7 @@
             var initialLabels = {{ dashboard.solar.chart_labels_js | safe }};
             var initialValues = {{ dashboard.solar.chart_values_js | safe }};
             var maxDataPoints = 1080;
+            FL.info('CHART', 'Solar chart init — ' + initialLabels.length + ' data points');
 
             var gradient = ctx.getContext('2d').createLinearGradient(0, 0, 0, 260);
             gradient.addColorStop(0, 'rgba(100, 225, 255, 0.35)');
@@ -333,6 +451,7 @@
 
             function updateSolarData(data) {
                 console.log('Solar data updated:', data.watts, 'W');
+                FL.info('SYNC', 'solar: ' + Math.round(data.watts) + 'W | charger: ' + (data.charger_amps ?? '-') + 'A | ' + (data.buffer_temps ? 'buffer_temps' : 'no buffer') + ' | ' + (data.pump_status ? 'pump' : 'no pump'));
 
                 // Update current output stat
                 var wattsEl = document.querySelector('.stat:first-child .stat-value');
@@ -425,28 +544,34 @@
 
             function updateGarage(data, side) {
                 var wrapper = document.getElementById('garage-' + side + '-wrapper');
-                if (!wrapper) return;
+                if (!wrapper) { FL.warn('GARAGE', side + ' wrapper not found'); return; }
                 var statusEl = wrapper.querySelector('.status');
-                var actionEl = wrapper.querySelector('.action');
-                var btnEl = wrapper.querySelector('.garage-btn');
+                var btnEl = wrapper.querySelector('button');
+                FL.info('GARAGE', side + ': ' + data.status + ' → ' + data.action);
                 if (statusEl) statusEl.textContent = data.status;
-                if (actionEl) actionEl.textContent = data.action;
-                if (btnEl) btnEl.setAttribute('class', data.button_class);
+                if (btnEl) {
+                    btnEl.textContent = data.action;
+                    btnEl.setAttribute('class', data.button_class);
+                }
             }
 
             function wsSend(cmd) {
                 var msg = JSON.stringify(cmd);
                 if (!socket || socket.readyState !== WebSocket.OPEN) {
+                    FL.warn('WS', 'send deferred (not open), pending=' + pendingMessages.length + ' → ' + cmd.action + ' ' + cmd.entity_id);
                     pendingMessages.push(msg);
                     return;
                 }
                 socket.send(msg);
+                FL.info('WS', 'send → ' + cmd.action + ' entity=' + (cmd.entity_id || '-'));
             }
 
             function connect() {
+                FL.info('WS', 'connecting → ws://' + location.host + '/ws/solar');
                 socket = new WebSocket('ws://' + location.host + '/ws/solar');
 
                 socket.onopen = function() {
+                    FL.success('WS', 'connected — flushed ' + pendingMessages.length + ' pending messages');
                     for (var i = 0; i < pendingMessages.length; i++) {
                         socket.send(pendingMessages[i]);
                     }
@@ -458,28 +583,60 @@
                         var data = JSON.parse(event.data);
                         updateSolarData(data);
                     } catch (e) {
-                        console.error('WebSocket message parse failed:', e);
+                        FL.error('WS', 'parse failed: ' + e.message + ' | data=' + event.data.substring(0, 200));
                     }
                 };
 
                 socket.onclose = function() {
+                    FL.warn('WS', 'closed — reconnecting on next visible event');
                     socket = null;
                 };
             }
 
             document.addEventListener('visibilitychange', function() {
                 if (document.visibilityState === 'hidden' && socket) {
+                    FL.info('WS', 'page hidden — closing socket');
                     socket.close();
                 }
             });
 
             document.addEventListener('visibilitychange', function() {
                 if (document.visibilityState === 'visible') {
+                    FL.info('VIS', 'page visible — opening WebSocket');
                     connect();
                 }
             });
 
             connect();
+
+            // Attach wsSend click handlers programmatically (inline onclick can't see wsSend inside IIFE)
+            var refreshBtn = document.querySelector('.refresh-btn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    FL.info('CLICK', 'refresh btn clicked');
+                    wsSend({action:'force_refresh'});
+                });
+            }
+
+            document.querySelectorAll('.garage-card button').forEach(function(el) {
+                el.addEventListener('click', function() {
+                    FL.info('CLICK', 'garage toggle → entity=' + el.dataset.entityId);
+                    wsSend({action:'toggle', entity_id: el.dataset.entityId});
+                });
+            });
+
+            document.querySelectorAll('.toggle-btn, .script-btn').forEach(function(btn) {
+                var entity = btn.getAttribute('data-entity-id');
+                if (entity) {
+                    var action = btn.classList.contains('script-btn') ? 'run_script' : 'toggle';
+                    btn.addEventListener('click', function() {
+                        FL.info('CLICK', action + ' → entity=' + entity);
+                        wsSend({action: action, entity_id: entity});
+                    });
+                }
+            });
+            FL.success('HANDLERS', 'all click handlers attached: refresh, garage, toggle, scripts');
         })();
     </script>
 </div>

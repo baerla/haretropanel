@@ -419,6 +419,147 @@
             color: var(--danger);
         }
 
+        /* Debug log panel */
+        .debug-log-panel {
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            width: 480px;
+            max-height: 320px;
+            background: rgba(10, 12, 18, 0.97);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px 0 0 0;
+            font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+            font-size: 11px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: max-height 0.2s ease;
+        }
+
+        .debug-log-panel.collapsed {
+            max-height: 36px;
+        }
+
+        .debug-log-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: rgba(30, 40, 60, 0.8);
+            border-radius: 12px 0 0 0;
+            cursor: pointer;
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        .debug-log-header:hover {
+            background: rgba(40, 55, 80, 0.85);
+        }
+
+        .debug-log-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #8d96ab;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .debug-log-count {
+            font-size: 10px;
+            color: #5ebe82;
+            margin-left: 8px;
+        }
+
+        .debug-log-controls {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .debug-log-btn {
+            background: none;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #8d96ab;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .debug-log-btn:hover {
+            border-color: rgba(255, 255, 255, 0.3);
+            color: #eef3ff;
+        }
+
+        .debug-log-body {
+            overflow-y: auto;
+            flex: 1;
+            padding: 8px 12px;
+        }
+
+        .debug-log-entry {
+            padding: 2px 0;
+            line-height: 1.4;
+            word-break: break-all;
+        }
+
+        .debug-log-entry.log { color: #eef3ff; }
+        .debug-log-entry.info { color: #64e1ff; }
+        .debug-log-entry.warn { color: #f7d48f; }
+        .debug-log-entry.error { color: #eb7070; }
+        .debug-log-entry.success { color: #5ebe82; }
+
+        .debug-log-time {
+            color: #5a6275;
+            margin-right: 6px;
+            user-select: none;
+        }
+
+        .debug-log-tag {
+            color: #5a6275;
+            margin-right: 6px;
+            user-select: none;
+            font-size: 10px;
+        }
+
+        .debug-toggle-fab {
+            position: fixed;
+            bottom: 12px;
+            right: 12px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(30, 40, 60, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #8d96ab;
+            font-size: 16px;
+            cursor: pointer;
+            z-index: 9998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s ease;
+        }
+
+        .debug-toggle-fab:hover {
+            background: rgba(40, 55, 80, 0.9);
+            color: #eef3ff;
+        }
+
+        .debug-toggle-fab.hidden {
+            display: none;
+        }
+
+        @media (max-width: 600px) {
+            .debug-log-panel {
+                width: 100%;
+                border-radius: 0;
+            }
+        }
+
         .buffer-temp-chart {
             height: 220px;
             background: rgba(15, 20, 30, 0.6);
