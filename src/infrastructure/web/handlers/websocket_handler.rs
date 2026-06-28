@@ -1,29 +1,181 @@
-use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::State;
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 use crate::application::services::DashboardService;
 use crate::infrastructure::web::AppState;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Command Parsing Tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_parse_toggle_command() {
+        let json = r#"{"action":"toggle","entity_id":"light.test"}"#;
+        let cmd: ClientCommand = serde_json::from_str(json).unwrap();
+        match cmd {
+            ClientCommand::Toggle { entity_id } => assert_eq!(entity_id, "light.test"),
+            _ => panic!("Expected Toggle"),
+        }
+    }
+
+    #[test]
+    fn test_parse_run_script_command() {
+        let json = r#"{"action":"run_script","entity_id":"script.away"}"#;
+        let cmd: ClientCommand = serde_json::from_str(json).unwrap();
+        match cmd {
+            ClientCommand::RunScript { entity_id } => assert_eq!(entity_id, "script.away"),
+            _ => panic!("Expected RunScript"),
+        }
+    }
+
+    #[test]
+    fn test_parse_save_settings_command() {
+        let json = r#"{"action":"save_settings","visible":["light.a","light.b"],"pages":{"light.a":0,"light.b":1}}"#;
+        let cmd: ClientCommand = serde_json::from_str(json).unwrap();
+        match cmd {
+            ClientCommand::SaveSettings { visible, pages } => {
+                assert_eq!(visible, vec!["light.a".to_string(), "light.b".to_string()]);
+                assert_eq!(pages.len(), 2);
+                assert_eq!(pages.get("light.a"), Some(&0));
+                assert_eq!(pages.get("light.b"), Some(&1));
+            }
+            _ => panic!("Expected SaveSettings"),
+        }
+    }
+
+    #[test]
+    fn test_parse_force_refresh_command() {
+        let json = r#"{"action":"force_refresh"}"#;
+        let cmd: ClientCommand = serde_json::from_str(json).unwrap();
+        matches!(cmd, ClientCommand::ForceRefresh {});
+    }
+
+    // ── Error Cases ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_invalid_action() {
+        let json = r#"{"action":"unknown_action","entity_id":"light.test"}"#;
+        let result: Result<ClientCommand, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Should reject unknown action");
+    }
+
+    #[test]
+    fn test_parse_missing_entity_id_toggle() {
+        let json = r#"{"action":"toggle"}"#;
+        let result: Result<ClientCommand, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Should reject toggle without entity_id");
+    }
+
+    #[test]
+    fn test_parse_missing_entity_id_run_script() {
+        let json = r#"{"action":"run_script"}"#;
+        let result: Result<ClientCommand, _> = serde_json::from_str(json);
+        assert!(
+            result.is_err(),
+            "Should reject run_script without entity_id"
+        );
+    }
+
+    #[test]
+    fn test_parse_missing_required_fields_save_settings() {
+        let json = r#"{"action":"save_settings"}"#;
+        let result: Result<ClientCommand, _> = serde_json::from_str(json);
+        assert!(
+            result.is_err(),
+            "Should reject save_settings without required fields"
+        );
+    }
+
+    #[test]
+    fn test_parse_empty_string() {
+        let result: Result<ClientCommand, _> = serde_json::from_str("");
+        assert!(result.is_err(), "Should reject empty string");
+    }
+
+    #[test]
+    fn test_parse_malformed_json() {
+        let result: Result<ClientCommand, _> = serde_json::from_str("{bad");
+        assert!(result.is_err(), "Should reject malformed JSON");
+    }
+
+    #[test]
+    fn test_parse_camelcase_rejected() {
+        // camelCase should be rejected due to rename_all = "snake_case"
+        let json = r#"{"action":"toggle","entityId":"light.test"}"#;
+        let result: Result<ClientCommand, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Should reject camelCase field names");
+    }
+
+    #[test]
+    fn test_parse_extra_fields_rejected() {
+        // deny_unknown_fields should reject extra keys
+        let json = r#"{"action":"toggle","entity_id":"light.test","extra_field":"value"}"#;
+        let result: Result<ClientCommand, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Should reject extra unknown fields");
+    }
+
+    #[test]
+    fn test_parse_force_refresh_no_extra_fields() {
+        let json = r#"{"action":"force_refresh","extra":"value"}"#;
+        let result: Result<ClientCommand, _> = serde_json::from_str(json);
+        assert!(
+            result.is_err(),
+            "Should reject force_refresh with extra fields"
+        );
+    }
+
+    #[test]
+    fn test_parse_empty_json_object() {
+        let result: Result<ClientCommand, _> = serde_json::from_str("{}");
+        // With tag = "action", empty object should fail to deserialize
+        assert!(result.is_err(), "Should reject empty JSON object");
+    }
+
+    #[test]
+    fn test_parse_toggle_with_wrong_type() {
+        // entity_id should be a string, not a number
+        let json = r#"{"action":"toggle","entity_id":123}"#;
+        let result: Result<ClientCommand, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Should reject non-string entity_id");
+    }
+
+    #[test]
+    fn test_parse_save_settings_empty_vectors_and_maps() {
+        let json = r#"{"action":"save_settings","visible":[],"pages":{}}"#;
+        let cmd: ClientCommand = serde_json::from_str(json).unwrap();
+        match cmd {
+            ClientCommand::SaveSettings { visible, pages } => {
+                assert!(visible.is_empty());
+                assert!(pages.is_empty());
+            }
+            _ => panic!("Expected SaveSettings"),
+        }
+    }
+}
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[serde(tag = "action")]
 enum ClientCommand {
-    Toggle { entity_id: String },
-    RunScript { entity_id: String },
+    Toggle {
+        entity_id: String,
+    },
+    RunScript {
+        entity_id: String,
+    },
     SaveSettings {
         visible: Vec<String>,
         pages: std::collections::HashMap<String, usize>,
     },
-    ForceRefresh,
+    ForceRefresh {},
 }
 
-pub async fn ws_solar(
-    State(state): State<AppState>,
-    ws: WebSocketUpgrade,
-) -> impl IntoResponse {
+pub async fn ws_solar(State(state): State<AppState>, ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
@@ -125,8 +277,15 @@ async fn handle_client_command(text: &str, service: &DashboardService) -> serde_
             }
         }
         ClientCommand::SaveSettings { visible, pages } => {
-            info!("WS save_settings: visible={}, pages={}", visible.len(), pages.len());
-            let ids: Vec<crate::domain::EntityId> = visible.into_iter().map(|s| crate::domain::EntityId(s)).collect();
+            info!(
+                "WS save_settings: visible={}, pages={}",
+                visible.len(),
+                pages.len()
+            );
+            let ids: Vec<crate::domain::EntityId> = visible
+                .into_iter()
+                .map(|s| crate::domain::EntityId(s))
+                .collect();
             if let Err(e) = service.save_visible_entities(ids).await {
                 error!("WS save visible failed: {}", e);
                 return serde_json::json!({
@@ -142,7 +301,7 @@ async fn handle_client_command(text: &str, service: &DashboardService) -> serde_
                 });
             }
         }
-        ClientCommand::ForceRefresh => {
+        ClientCommand::ForceRefresh {} => {
             info!("WS force_refresh");
         }
     }
@@ -171,7 +330,9 @@ async fn build_fresh_payload(service: &DashboardService) -> serde_json::Value {
     let charger_state = service.compute_car_state(&state).await;
 
     let make_garage_status = |entity_id: &str, default_name: &str| -> serde_json::Value {
-        state.entities.iter()
+        state
+            .entities
+            .iter()
             .find(|e| e.id.0 == entity_id)
             .map(|e| {
                 let is_open = e.is_on;
@@ -201,16 +362,33 @@ async fn build_fresh_payload(service: &DashboardService) -> serde_json::Value {
     };
 
     let garage_left = make_garage_status(cfg.garage_left_status_entity_id.as_str(), "Garage Left");
-    let garage_right = make_garage_status(cfg.garage_right_status_entity_id.as_str(), "Garage Right");
+    let garage_right =
+        make_garage_status(cfg.garage_right_status_entity_id.as_str(), "Garage Right");
 
     let chart_labels: Vec<String> = chart_points.labels;
     let chart_values: Vec<f64> = chart_points.values;
 
     let buffer_labels = buffer_chart_points.labels;
-    let buffer_top_vals: Vec<String> = buffer_chart_points.buffer_top.iter().map(|v| format!("{:.1}", v)).collect();
-    let buffer_bottom_vals: Vec<String> = buffer_chart_points.buffer_bottom.iter().map(|v| format!("{:.1}", v)).collect();
-    let solar_flow_vals: Vec<String> = buffer_chart_points.solar_flow.iter().map(|v| format!("{:.1}", v)).collect();
-    let solar_return_vals: Vec<String> = buffer_chart_points.solar_return.iter().map(|v| format!("{:.1}", v)).collect();
+    let buffer_top_vals: Vec<String> = buffer_chart_points
+        .buffer_top
+        .iter()
+        .map(|v| format!("{:.1}", v))
+        .collect();
+    let buffer_bottom_vals: Vec<String> = buffer_chart_points
+        .buffer_bottom
+        .iter()
+        .map(|v| format!("{:.1}", v))
+        .collect();
+    let solar_flow_vals: Vec<String> = buffer_chart_points
+        .solar_flow
+        .iter()
+        .map(|v| format!("{:.1}", v))
+        .collect();
+    let solar_return_vals: Vec<String> = buffer_chart_points
+        .solar_return
+        .iter()
+        .map(|v| format!("{:.1}", v))
+        .collect();
 
     serde_json::json!({
         "watts": watts,
