@@ -1,8 +1,5 @@
 use askama::Template;
-use axum::{
-    extract::State,
-    response::Html,
-};
+use axum::{extract::State, response::Html};
 use tracing::info;
 
 use crate::infrastructure::web::AppState;
@@ -34,7 +31,10 @@ impl From<(&crate::domain::Entity, bool, usize)> for EntitySettingsViewModel {
             is_on: e.is_on,
             has_value,
             value,
-            can_toggle: matches!(e.kind, crate::domain::EntityKind::Light | crate::domain::EntityKind::Switch),
+            can_toggle: matches!(
+                e.kind,
+                crate::domain::EntityKind::Light | crate::domain::EntityKind::Switch
+            ),
             can_run_script: false,
             can_toggle_cover: matches!(e.kind, crate::domain::EntityKind::Cover),
             is_selected: visible,
@@ -54,23 +54,21 @@ pub async fn get_entity_settings(State(state): State<AppState>) -> AppResult<Htm
 
     let dashboard_state = state.dashboard_service.get_dashboard().await?;
     let cfg = state.dashboard_service.config();
-    let visible_ids = state.dashboard_service.get_visible_entity_ids().await.unwrap_or_default();
-    let pages = state.dashboard_service.get_entity_pages().await.unwrap_or_default();
+    let visible_ids = state
+        .dashboard_service
+        .get_visible_entity_ids()
+        .await
+        .unwrap_or_default();
+    let pages = state
+        .dashboard_service
+        .get_entity_pages()
+        .await
+        .unwrap_or_default();
 
-    let system_entity_ids: std::collections::HashSet<&str> = [
-        cfg.solar_entity_id.as_str(),
-        cfg.charger_current_entity_id.as_str(),
-        cfg.goe_status_entity_id.as_str(),
-        cfg.goe_car_connected_entity_id.as_str(),
-        cfg.garage_left_status_entity_id.as_str(),
-        cfg.garage_left_action_entity_id.as_str(),
-        cfg.garage_right_status_entity_id.as_str(),
-        cfg.garage_right_action_entity_id.as_str(),
-    ]
-    .into_iter()
-    .collect();
+    let system_entity_ids = cfg.system_entity_ids();
 
-    let visible_id_set: std::collections::HashSet<&str> = visible_ids.iter().map(|e| e.0.as_str()).collect();
+    let visible_id_set: std::collections::HashSet<&str> =
+        visible_ids.iter().map(|e| e.0.as_str()).collect();
 
     let entities: Vec<EntitySettingsViewModel> = dashboard_state
         .entities

@@ -1,5 +1,6 @@
 use crate::shared::error::{AppError, AppResult};
 use dotenvy::dotenv;
+use std::collections::HashSet;
 use std::env;
 use std::num::NonZeroU64;
 use tracing::info;
@@ -55,6 +56,22 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
+    pub fn system_entity_ids(&self) -> HashSet<&str> {
+        [
+            self.solar_entity_id.as_str(),
+            self.charger_current_entity_id.as_str(),
+            self.goe_status_entity_id.as_str(),
+            self.goe_car_connected_entity_id.as_str(),
+            self.goe_charging_entity_id.as_str(),
+            self.garage_left_status_entity_id.as_str(),
+            self.garage_left_action_entity_id.as_str(),
+            self.garage_right_status_entity_id.as_str(),
+            self.garage_right_action_entity_id.as_str(),
+        ]
+        .into_iter()
+        .collect()
+    }
+
     pub fn from_env() -> AppResult<Self> {
         dotenv().ok();
 
@@ -112,25 +129,37 @@ impl AppConfig {
         let solar_history_minutes = env::var("HARETROPANEL_SOLAR_HISTORY_MINUTES")
             .unwrap_or_else(|_| "60".to_string())
             .parse()
-            .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_SOLAR_HISTORY_MINUTES: {e}")))?;
+            .map_err(|e| {
+                AppError::Config(format!("Invalid HARETROPANEL_SOLAR_HISTORY_MINUTES: {e}"))
+            })?;
         let solar_sample_secs = env::var("HARETROPANEL_SOLAR_SAMPLE_SECS")
             .unwrap_or_else(|_| "60".to_string())
             .parse()
-            .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_SOLAR_SAMPLE_SECS: {e}")))?;
+            .map_err(|e| {
+                AppError::Config(format!("Invalid HARETROPANEL_SOLAR_SAMPLE_SECS: {e}"))
+            })?;
 
         let goe_energy_stable_secs = env::var("HARETROPANEL_GOE_ENERGY_STABLE_SECS")
             .unwrap_or_else(|_| "60".to_string())
             .parse()
-            .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_GOE_ENERGY_STABLE_SECS: {e}")))?;
+            .map_err(|e| {
+                AppError::Config(format!("Invalid HARETROPANEL_GOE_ENERGY_STABLE_SECS: {e}"))
+            })?;
         let goe_energy_delta_kwh = env::var("HARETROPANEL_GOE_ENERGY_DELTA_KWH")
             .unwrap_or_else(|_| "0.02".to_string())
             .parse()
-            .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_GOE_ENERGY_DELTA_KWH: {e}")))?;
+            .map_err(|e| {
+                AppError::Config(format!("Invalid HARETROPANEL_GOE_ENERGY_DELTA_KWH: {e}"))
+            })?;
 
         let force_fetch_interval_secs = env::var("HARETROPANEL_FORCE_FETCH_INTERVAL_SECS")
             .unwrap_or_else(|_| "120".to_string())
             .parse()
-            .map_err(|e| AppError::Config(format!("Invalid HARETROPANEL_FORCE_FETCH_INTERVAL_SECS: {e}")))?;
+            .map_err(|e| {
+                AppError::Config(format!(
+                    "Invalid HARETROPANEL_FORCE_FETCH_INTERVAL_SECS: {e}"
+                ))
+            })?;
 
         // logging — when set, logs to this file; when unset, logs to stdout
         let log_file = env::var("HARETROPANEL_LOG_FILE").ok();
@@ -141,7 +170,6 @@ impl AppConfig {
         // ---- Dashboard cache TTL config ----
         // Default TTL in seconds (used when no per-kind override exists)
         let dashboard_cache_ttl_default_secs = env::var("HARETROPANEL_CACHE_TTL_DEFAULT_SECS")
-
             .unwrap_or_else(|_| "5".to_string())
             .parse()
             .map_err(|e| {
@@ -150,22 +178,42 @@ impl AppConfig {
 
         let dashboard_cache_ttl_light_secs = env::var("HARETROPANEL_CACHE_TTL_LIGHT_SECS")
             .ok()
-            .and_then(|v| v.parse::<u64>().ok().filter(|v| *v > 0).and_then(NonZeroU64::new))
+            .and_then(|v| {
+                v.parse::<u64>()
+                    .ok()
+                    .filter(|v| *v > 0)
+                    .and_then(NonZeroU64::new)
+            })
             .map(|v| v.get());
 
         let dashboard_cache_ttl_switch_secs = env::var("HARETROPANEL_CACHE_TTL_SWITCH_SECS")
             .ok()
-            .and_then(|v| v.parse::<u64>().ok().filter(|v| *v > 0).and_then(NonZeroU64::new))
+            .and_then(|v| {
+                v.parse::<u64>()
+                    .ok()
+                    .filter(|v| *v > 0)
+                    .and_then(NonZeroU64::new)
+            })
             .map(|v| v.get());
 
         let dashboard_cache_ttl_sensor_secs = env::var("HARETROPANEL_CACHE_TTL_SENSOR_SECS")
             .ok()
-            .and_then(|v| v.parse::<u64>().ok().filter(|v| *v > 0).and_then(NonZeroU64::new))
+            .and_then(|v| {
+                v.parse::<u64>()
+                    .ok()
+                    .filter(|v| *v > 0)
+                    .and_then(NonZeroU64::new)
+            })
             .map(|v| v.get());
 
         let dashboard_cache_ttl_climate_secs = env::var("HARETROPANEL_CACHE_TTL_CLIMATE_SECS")
             .ok()
-            .and_then(|v| v.parse::<u64>().ok().filter(|v| *v > 0).and_then(NonZeroU64::new))
+            .and_then(|v| {
+                v.parse::<u64>()
+                    .ok()
+                    .filter(|v| *v > 0)
+                    .and_then(NonZeroU64::new)
+            })
             .map(|v| v.get());
 
         info!(
@@ -230,7 +278,11 @@ mod app_config_tests {
         let clear_all = || {
             // Clear all HARETROPANEL_* and HA_* vars that from_env() reads
             for var in std::env::vars() {
-                if var.0.starts_with("HARETROPANEL_") || var.0 == "HA_BASE_URL" || var.0 == "HA_TOKEN" || var.0 == "DOTENV_FILE" {
+                if var.0.starts_with("HARETROPANEL_")
+                    || var.0 == "HA_BASE_URL"
+                    || var.0 == "HA_TOKEN"
+                    || var.0 == "DOTENV_FILE"
+                {
                     env::remove_var(&var.0);
                 }
             }
@@ -270,7 +322,10 @@ mod app_config_tests {
         clear_all();
 
         // 5. Log file custom path
-        env::set_var("HARETROPANEL_LOG_FILE", "/var/log/haretropanel/haretropanel.log");
+        env::set_var(
+            "HARETROPANEL_LOG_FILE",
+            "/var/log/haretropanel/haretropanel.log",
+        );
         env::set_var("HARETROPANEL_LOG_LEVEL", "debug");
         assert_eq!(
             AppConfig::from_env().unwrap().log_file,
@@ -285,7 +340,12 @@ mod app_config_tests {
 
         // 7. Custom cache TTL
         env::set_var("HARETROPANEL_CACHE_TTL_DEFAULT_SECS", "30");
-        assert_eq!(AppConfig::from_env().unwrap().dashboard_cache_ttl_default_secs, 30);
+        assert_eq!(
+            AppConfig::from_env()
+                .unwrap()
+                .dashboard_cache_ttl_default_secs,
+            30
+        );
         clear_all();
 
         // 8. Invalid cache TTL → error
@@ -328,6 +388,5 @@ mod app_config_tests {
         // 12. Debug display
         let debug_str = format!("{cfg:?}");
         assert!(debug_str.contains("AppConfig"));
-
     }
 }

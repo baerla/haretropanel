@@ -1,10 +1,11 @@
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
 use tracing::{error, info, warn};
 
 use crate::application::services::DashboardService;
+use crate::infrastructure::web::viewhelpers;
 use crate::infrastructure::web::AppState;
 
 #[cfg(test)]
@@ -329,41 +330,16 @@ async fn build_fresh_payload(service: &DashboardService) -> serde_json::Value {
     let pump_status = service.compute_pump_status(&state);
     let charger_state = service.compute_car_state(&state).await;
 
-    let make_garage_status = |entity_id: &str, default_name: &str| -> serde_json::Value {
-        state
-            .entities
-            .iter()
-            .find(|e| e.id.0 == entity_id)
-            .map(|e| {
-                let is_open = e.is_on;
-                let name = e.name.clone();
-                let status = if is_open { "Offen" } else { "Geschlossen" };
-                let action = if is_open { "Schließen" } else { "Öffnen" };
-                let button_class = if is_open {
-                    "garage-btn garage-open"
-                } else {
-                    "garage-btn garage-closed"
-                };
-                serde_json::json!({
-                    "name": name,
-                    "status": status,
-                    "action": action,
-                    "button_class": button_class,
-                })
-            })
-            .unwrap_or_else(|| {
-                serde_json::json!({
-                    "name": default_name,
-                    "status": "Geschlossen",
-                    "action": "Öffnen",
-                    "button_class": "garage-btn garage-closed",
-                })
-            })
-    };
-
-    let garage_left = make_garage_status(cfg.garage_left_status_entity_id.as_str(), "Garage Left");
-    let garage_right =
-        make_garage_status(cfg.garage_right_status_entity_id.as_str(), "Garage Right");
+    let garage_left = viewhelpers::build_garage_door(
+        cfg.garage_left_status_entity_id.as_str(),
+        "Garage Left",
+        &state,
+    );
+    let garage_right = viewhelpers::build_garage_door(
+        cfg.garage_right_status_entity_id.as_str(),
+        "Garage Right",
+        &state,
+    );
 
     let chart_labels: Vec<String> = chart_points.labels;
     let chart_values: Vec<f64> = chart_points.values;

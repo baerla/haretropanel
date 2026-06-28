@@ -6,12 +6,13 @@ use axum::{
 use serde::Deserialize;
 
 use crate::infrastructure::web::{
-        viewmodels::{
-            BufferTempViewModel, ChargerViewModel, DashboardTemplate,
-            DashboardViewModel, GarageDoorViewModel, PumpViewModel, SolarViewModel,
-        },
-        AppState,
-    };
+    viewhelpers::make_garage_door_vm,
+    viewmodels::{
+        BufferTempViewModel, ChargerViewModel, DashboardTemplate, DashboardViewModel,
+        PumpViewModel, SolarViewModel,
+    },
+    AppState,
+};
 use crate::shared::error::AppResult;
 
 #[derive(Debug, Deserialize)]
@@ -78,7 +79,9 @@ pub async fn get_dashboard(
     let solar_return: Vec<f64> = buffer_chart_points.solar_return;
 
     // Pump status
-    let pump_vm = state.dashboard_service.compute_pump_status(&dashboard_state);
+    let pump_vm = state
+        .dashboard_service
+        .compute_pump_status(&dashboard_state);
 
     let solar_vm = SolarViewModel {
         watts_label: format!("{:.0} W", solar_watts),
@@ -91,10 +94,20 @@ pub async fn get_dashboard(
                 .collect::<Vec<_>>()
                 .join(",")
         ),
-        chart_values_js: format!("[{}]", chart_values.iter().map(|v| format!("{:.0}", v)).collect::<Vec<_>>().join(",")),
+        chart_values_js: format!(
+            "[{}]",
+            chart_values
+                .iter()
+                .map(|v| format!("{:.0}", v))
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
     };
 
-    let charger_state = state.dashboard_service.compute_car_state(&dashboard_state).await;
+    let charger_state = state
+        .dashboard_service
+        .compute_car_state(&dashboard_state)
+        .await;
 
     let charger_vm = ChargerViewModel {
         amps_label: charger_state.charger_value,
@@ -106,48 +119,15 @@ pub async fn get_dashboard(
         pill_paused: charger_state.paused,
     };
 
-    let make_garage_vm = |entity: Option<&crate::domain::Entity>, entity_id: &str, default_name: &str| {
-        let name = entity
-            .map(|e| e.name.clone())
-            .unwrap_or_else(|| default_name.to_string())
-            .strip_prefix("Garage")
-            .unwrap_or_else(|| default_name).to_string()
-            .strip_suffix("Offen")
-            .unwrap_or_else(|| default_name).to_string();
-        let is_open = entity.map(|e| e.is_on).unwrap_or(false);
-        let status_label = if is_open { "Offen" } else { "Geschlossen" };
-        let action_label = if is_open { "Schließen" } else { "Öffnen" };
-        let button_class = if is_open {
-            "garage-btn garage-open"
-        } else {
-            "garage-btn garage-closed"
-        };
-
-        GarageDoorViewModel {
-            id: entity_id.to_string(),
-            name,
-            status_label: status_label.to_string(),
-            action_label: action_label.to_string(),
-            button_class: button_class.to_string(),
-        }
-    };
-
     let requested_page = query.page.unwrap_or(1);
-    let entity_pages = state.dashboard_service.get_entity_pages().await.unwrap_or_default();
+    let entity_pages = state
+        .dashboard_service
+        .get_entity_pages()
+        .await
+        .unwrap_or_default();
 
     // Collect regular entities (exclude system entities from pagination)
-    let system_entity_ids: std::collections::HashSet<&str> = [
-        cfg.solar_entity_id.as_str(),
-        cfg.charger_current_entity_id.as_str(),
-        cfg.goe_status_entity_id.as_str(),
-        cfg.goe_car_connected_entity_id.as_str(),
-        cfg.garage_left_status_entity_id.as_str(),
-        cfg.garage_left_action_entity_id.as_str(),
-        cfg.garage_right_status_entity_id.as_str(),
-        cfg.garage_right_action_entity_id.as_str(),
-    ]
-    .into_iter()
-    .collect();
+    let system_entity_ids = cfg.system_entity_ids();
 
     let regular_entities: Vec<&crate::domain::Entity> = dashboard_state
         .entities
@@ -173,28 +153,72 @@ pub async fn get_dashboard(
     };
 
     // Filter entities for current page
-    let page_entities: Vec<crate::infrastructure::web::viewmodels::EntityViewModel> = regular_entities
-        .into_iter()
-        .filter(|e| {
-            entity_pages
-                .get(&e.id.0)
-                .map(|&p| p == active_tab)
-                .unwrap_or(false)
-        })
-        .map(|e| e.into())
-        .collect();
+    let page_entities: Vec<crate::infrastructure::web::viewmodels::EntityViewModel> =
+        regular_entities
+            .into_iter()
+            .filter(|e| {
+                entity_pages
+                    .get(&e.id.0)
+                    .map(|&p| p == active_tab)
+                    .unwrap_or(false)
+            })
+            .map(|e| e.into())
+            .collect();
 
     let dashboard_vm = DashboardViewModel {
         solar: solar_vm,
         charger: charger_vm,
-        garage_left: make_garage_vm(garage_left_entity, cfg.garage_left_action_entity_id.as_str(), "Garage Left"),
-        garage_right: make_garage_vm(garage_right_entity, cfg.garage_right_action_entity_id.as_str(), "Garage Right"),
+        garage_left: make_garage_door_vm(
+            garage_left_entity,
+            cfg.garage_left_action_entity_id.as_str(),
+            "Garage Left",
+        ),
+        garage_right: make_garage_door_vm(
+            garage_right_entity,
+            cfg.garage_right_action_entity_id.as_str(),
+            "Garage Right",
+        ),
         buffer_chart: BufferTempViewModel {
-            chart_labels_js: format!("[{}]", buffer_labels.iter().map(|l| format!("\"{}\"", l)).collect::<Vec<_>>().join(",")),
-            chart_buffer_top_js: format!("[{}]", buffer_top.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(",")),
-            chart_buffer_bottom_js: format!("[{}]", buffer_bottom.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(",")),
-            chart_solar_flow_js: format!("[{}]", solar_flow.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(",")),
-            chart_solar_return_js: format!("[{}]", solar_return.iter().map(|v| format!("{:.1}", v)).collect::<Vec<_>>().join(",")),
+            chart_labels_js: format!(
+                "[{}]",
+                buffer_labels
+                    .iter()
+                    .map(|l| format!("\"{}\"", l))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+            chart_buffer_top_js: format!(
+                "[{}]",
+                buffer_top
+                    .iter()
+                    .map(|v| format!("{:.1}", v))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+            chart_buffer_bottom_js: format!(
+                "[{}]",
+                buffer_bottom
+                    .iter()
+                    .map(|v| format!("{:.1}", v))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+            chart_solar_flow_js: format!(
+                "[{}]",
+                solar_flow
+                    .iter()
+                    .map(|v| format!("{:.1}", v))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+            chart_solar_return_js: format!(
+                "[{}]",
+                solar_return
+                    .iter()
+                    .map(|v| format!("{:.1}", v))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
         },
         pump_status: PumpViewModel {
             pump_on: pump_vm.pump_on,
