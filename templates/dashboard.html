@@ -208,30 +208,35 @@
                     var level = 'log';
                     this.entries.push({ time: time, tag: tag, msg: msg, level: level });
                     this.flush();
+                    this.consoleLog(level, tag, msg);
                 },
                 info: function (tag, msg) {
                     var now = new Date();
                     var time = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
                     this.entries.push({ time: time, tag: tag, msg: msg, level: 'info' });
                     this.flush();
+                    this.consoleLog('info', tag, msg);
                 },
                 warn: function (tag, msg) {
                     var now = new Date();
                     var time = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
                     this.entries.push({ time: time, tag: tag, msg: msg, level: 'warn' });
                     this.flush();
+                    this.consoleLog('warn', tag, msg);
                 },
                 error: function (tag, msg) {
                     var now = new Date();
                     var time = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
                     this.entries.push({ time: time, tag: tag, msg: msg, level: 'error' });
                     this.flush();
+                    this.consoleLog('error', tag, msg);
                 },
                 success: function (tag, msg) {
                     var now = new Date();
                     var time = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
                     this.entries.push({ time: time, tag: tag, msg: msg, level: 'success' });
                     this.flush();
+                    this.consoleLog('success', tag, msg);
                 },
                 flush: function () {
                     if (this.entries.length > this.max) {
@@ -258,6 +263,13 @@
                     }
                     body.innerHTML = html;
                     body.scrollTop = body.scrollHeight;
+                },
+                consoleLog: function (level, tag, msg) {
+                    if (level === 'log') console.log('[' + tag + '] ' + msg);
+                    else if (level === 'info') console.info('[' + tag + '] ' + msg);
+                    else if (level === 'warn') console.warn('[' + tag + '] ' + msg);
+                    else if (level === 'error') console.error('[' + tag + '] ' + msg);
+                    else if (level === 'success') console.log('[' + tag + '] ' + msg);
                 }
             };
 
