@@ -112,6 +112,7 @@ impl DashboardService {
                 interval.tick().await;
                 cycle += 1;
                 // Force a full HA fetch every N cycles to keep data fresh
+                #[allow(clippy::manual_is_multiple_of)]
                 let force = cycle % force_fetch_every == 0 && cycle > 0;
                 if force {
                     tracing::debug!("Periodic force refresh from Home Assistant");
@@ -420,8 +421,7 @@ impl DashboardService {
                 ) {
                     let local = utc_dt.with_timezone(&Local);
                     let hour = local.hour();
-                    let in_night_hours = !(21..24).contains(&hour) || !(6..21).contains(&hour);
-                    if in_night_hours && *watts <= 0.0 {
+                    if !(6..21).contains(&hour) && *watts <= 0.0 {
                         continue;
                     }
                     labels.push(format!("{:02}:{:02}", hour, local.minute()));

@@ -331,11 +331,15 @@ async fn handle_client_command(text: &str, service: &DashboardService) -> serde_
             }
         }
         ClientCommand::SaveSettings { visible, pages } => {
-            // Validate page numbers are >= 1 (1-based indexing)
+            let original_count = pages.len();
             let pages: std::collections::HashMap<String, usize> = pages
                 .into_iter()
                 .filter(|(_, p)| *p >= 1)
                 .collect();
+            let skipped = original_count - pages.len();
+            if skipped > 0 {
+                warn!(skipped, "WS save_settings: skipped {} invalid page number(s)", skipped);
+            }
             info!(
                 "WS save_settings: visible={}, pages={}",
                 visible.len(),
