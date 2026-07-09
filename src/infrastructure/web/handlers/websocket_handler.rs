@@ -73,6 +73,18 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     // Single channel for all outgoing messages (broadcast + command responses)
     let (outgoing_tx, outgoing_rx) = tokio::sync::mpsc::channel::<Message>(64);
 
+    // Task 0: drain outgoing channel to the WebSocket sink
+    let mut sink = socket_sink;
+    let rx = outgoing_rx;
+    let drain_handle = tokio::spawn(async move {
+        let mut rx = rx;
+        while let Some(msg) = rx.recv().await {
+            if sink.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
     // Task 1: broadcast → outgoing channel
     let broadcast_tx = outgoing_tx.clone();
     let broadcast_handle = tokio::spawn(async move {
@@ -109,20 +121,11 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         }
     }
 
-    // Client disconnected: abort broadcast task to stop the zombie,
-    // then drain any remaining messages through the sink.
-    broadcast_handle.abort();
+    // Client disconnected: abort both tasks, then drop remaining senders
     drop(cmd_tx);
     drop(outgoing_tx);
-
-    // Drain remaining messages to the WebSocket sink
-    let mut sink = socket_sink;
-    let mut rx = outgoing_rx;
-    while let Some(msg) = rx.recv().await {
-        if sink.send(msg).await.is_err() {
-            break;
-        }
-    }
+    broadcast_handle.abort();
+    drain_handle.abort();
 
     info!("WebSocket client disconnected from /ws/solar");
 }
@@ -365,7 +368,8 @@ async fn handle_client_command(text: &str, service: &DashboardService) -> serde_
             }
         }
         ClientCommand::ForceRefresh {} => {
-            info!("WS force_refresh");
+            info!("WS force_refresh — invalidating cache");
+            service.invalidate_cache().await;
         }
     }
 

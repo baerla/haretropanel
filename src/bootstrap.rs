@@ -41,9 +41,11 @@ pub async fn run(config: AppConfig) -> AppResult<()> {
         config.clone(),
     ));
 
-    dashboard_service.start_periodic_updates();
-
-    let state = AppState { dashboard_service };
+    let state = AppState {
+        dashboard_service: Arc::clone(&dashboard_service),
+    };
+    let cloned_for_periodic = Arc::clone(&dashboard_service);
+    cloned_for_periodic.start_periodic_updates();
 
     let app = build_router(state);
 

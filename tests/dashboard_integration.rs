@@ -326,3 +326,350 @@ async fn test_get_settings_still_works() {
     // The settings page is served by `get_settings()` in settings_handler.rs.
     // Manual: curl http://localhost:8080/settings/entities should return 200 OK with HTML.
 }
+
+// ── WebSocket E2E Tests ────────────────────────────────────────────────
+
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use async_tungstenite::tungstenite::Message as WsMessage;
+use axum::routing::get;
+use axum::Router;
+use futures_util::{SinkExt, StreamExt};
+use tokio::net::TcpListener;
+
+/// Helper: bind a random-port TCP listener and return (listener, port).
+async fn bind_random() -> (TcpListener, u16) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    (listener, port)
+}
+
+/// Helper: build an Axum router with the given DashboardService and WS route.
+fn build_ws_router(service: Arc<DashboardService>) -> Router {
+    use haretropanel::infrastructure::web::handlers::websocket_handler::ws_solar;
+    use haretropanel::infrastructure::web::AppState;
+    Router::new()
+        .route("/ws/solar", get(ws_solar))
+        .with_state(AppState {
+            dashboard_service: service,
+        })
+}
+
+/// Build a tracking mock HA client that counts fetches and tracks toggles.
+fn build_tracking_client(state: DashboardState) -> (
+    Arc<TrackingHaClient>,
+    std::sync::Arc<AtomicUsize>,  // fetch counter
+    std::sync::Arc<AtomicBool>,   // toggle counter
+) {
+    let fetch_count = Arc::new(AtomicUsize::new(0));
+    let toggle_count = Arc::new(AtomicBool::new(false));
+    let fc = fetch_count.clone();
+    let tc = toggle_count.clone();
+    let client = Arc::new(TrackingHaClient {
+        state_response: Arc::new(move || Ok(state.clone())),
+        fetch_count: fc,
+        toggle_called: tc,
+    });
+    (client, fetch_count, toggle_count)
+}
+
+struct TrackingHaClient {
+    state_response: Arc<dyn Fn() -> haretropanel::shared::error::AppResult<DashboardState> + Send + Sync>,
+    fetch_count: std::sync::Arc<AtomicUsize>,
+    toggle_called: std::sync::Arc<AtomicBool>,
+}
+
+#[async_trait::async_trait]
+impl HomeAssistantClient for TrackingHaClient {
+    async fn fetch_dashboard_state(&self) -> haretropanel::shared::error::AppResult<DashboardState> {
+        self.fetch_count.fetch_add(1, Ordering::SeqCst);
+        (self.state_response)()
+    }
+    async fn toggle(&self, _entity_id: &EntityId) -> haretropanel::shared::error::AppResult<()> {
+        self.toggle_called.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+    async fn run_script(&self, _entity_id: &EntityId) -> haretropanel::shared::error::AppResult<()> {
+        Ok(())
+    }
+}
+
+/// Test 1: Force refresh command invalidates cache and triggers fresh fetch.
+///
+/// Sends `{"action":"force_refresh"}` via WebSocket, verifies the response
+/// contains dashboard data (watts field) and no error.
+#[tokio::test]
+async fn ws_force_refresh_command() {
+    let state = DashboardState {
+        entities: vec![
+            Entity {
+                id: EntityId("sensor.solar".into()),
+                name: "Solar".into(),
+                kind: EntityKind::Sensor,
+                is_on: true,
+                value: Some("1000 W".into()),
+            },
+            Entity {
+                id: EntityId("switch.garage_left".into()),
+                name: "Garage Left".into(),
+                kind: EntityKind::Switch,
+                is_on: false,
+                value: None,
+            },
+            Entity {
+                id: EntityId("switch.garage_right".into()),
+                name: "Garage Right".into(),
+                kind: EntityKind::Switch,
+                is_on: false,
+                value: None,
+            },
+        ],
+    };
+
+    let (client, fetch_count, _toggle) = build_tracking_client(state);
+    let service = Arc::new(DashboardService::new(
+        client,
+        Arc::new(MockLayoutRepo),
+        haretropanel::application::services::DashboardCacheConfig {
+            default_ttl_secs: 5,
+            light_ttl_secs: None,
+            switch_ttl_secs: None,
+            sensor_ttl_secs: None,
+            climate_ttl_secs: None,
+        },
+        test_config(),
+    ));
+
+    let (listener, port) = bind_random().await;
+    let app = build_ws_router(service);
+
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    // Give the server a moment to start
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Connect WebSocket client
+    let uri = format!("ws://127.0.0.1:{port}/ws/solar");
+    let (mut ws_tx, mut ws_rx) = async_tungstenite::tokio::connect_async(&uri)
+        .await
+        .unwrap()
+        .0
+        .split();
+
+    // Send the force_refresh command
+    let cmd = serde_json::json!({"action": "force_refresh"});
+    ws_tx.send(WsMessage::Text(
+        serde_json::to_string(&cmd).unwrap().into()
+    )).await.unwrap();
+
+    // Receive the response with timeout
+    let response = tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(msg) = ws_rx.next().await {
+            match msg {
+                Ok(WsMessage::Text(text)) => {
+                    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+                    return value;
+                }
+                Ok(WsMessage::Close(close)) => {
+                    if let Some(close_frame) = close {
+                        tracing::info!("WS close: {} {}", close_frame.code, close_frame.reason);
+                    }
+                    return serde_json::json!({"type": "close"});
+                }
+                _ => continue,
+            }
+        }
+        serde_json::json!({"type": "eof"})
+    }).await.expect("timeout waiting for force_refresh response");
+
+    // Verify response
+    assert!(
+        response.get("watts").is_some(),
+        "force_refresh response should contain 'watts' field, got: {response}"
+    );
+    if let Some(type_val) = response.get("type") {
+        assert_ne!(type_val, "error", "force_refresh response should not be an error: {response}");
+    }
+
+    // The fetch should have happened during force_refresh
+    let count = fetch_count.load(Ordering::SeqCst);
+    assert!(count >= 1, "fetch_count should be >= 1 after force_refresh, got {count}");
+
+    // Cleanup
+    drop(ws_tx);
+    server.abort();
+    let _ = server.await;
+}
+
+/// Test 2: Toggle command triggers HA client's toggle method.
+#[tokio::test]
+async fn ws_toggle_command() {
+    let state = DashboardState {
+        entities: vec![
+            Entity {
+                id: EntityId("light.test".into()),
+                name: "Test Light".into(),
+                kind: EntityKind::Light,
+                is_on: false,
+                value: None,
+            },
+        ],
+    };
+
+    let (client, _fetch_count, toggle_called) = build_tracking_client(state);
+    let service = Arc::new(DashboardService::new(
+        client,
+        Arc::new(MockLayoutRepo),
+        haretropanel::application::services::DashboardCacheConfig {
+            default_ttl_secs: 5,
+            light_ttl_secs: None,
+            switch_ttl_secs: None,
+            sensor_ttl_secs: None,
+            climate_ttl_secs: None,
+        },
+        test_config(),
+    ));
+
+    let (listener, port) = bind_random().await;
+    let app = build_ws_router(service);
+
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let uri = format!("ws://127.0.0.1:{port}/ws/solar");
+    let (mut ws_tx, mut ws_rx) = async_tungstenite::tokio::connect_async(&uri)
+        .await
+        .unwrap()
+        .0
+        .split();
+
+    // Send toggle command
+    let cmd = serde_json::json!({"action": "toggle", "entity_id": "light.test"});
+    ws_tx.send(WsMessage::Text(
+        serde_json::to_string(&cmd).unwrap().into()
+    )).await.unwrap();
+
+    // Receive response
+    let response = tokio::time::timeout(Duration::from_secs(10), async {
+        while let Some(msg) = ws_rx.next().await {
+            match msg {
+                Ok(WsMessage::Text(text)) => {
+                    return serde_json::from_str(&text).unwrap();
+                }
+                _ => continue,
+            }
+        }
+        serde_json::json!({"type": "eof"})
+    }).await.expect("timeout waiting for toggle response");
+
+    // Verify response
+    assert!(response.get("watts").is_some(), "toggle response should have 'watts': {response}");
+    assert!(toggle_called.load(Ordering::SeqCst), "toggle should have been called on HA client");
+
+    // Cleanup
+    drop(ws_tx);
+    server.abort();
+    let _ = server.await;
+}
+
+/// Test 3: Periodic broadcast sends dashboard_update messages to connected client.
+#[tokio::test]
+async fn ws_periodic_broadcast() {
+    let state = DashboardState {
+        entities: vec![
+            Entity {
+                id: EntityId("sensor.solar".into()),
+                name: "Solar".into(),
+                kind: EntityKind::Sensor,
+                is_on: true,
+                value: Some("2500 W".into()),
+            },
+            Entity {
+                id: EntityId("switch.garage_left".into()),
+                name: "Garage Left".into(),
+                kind: EntityKind::Switch,
+                is_on: false,
+                value: None,
+            },
+            Entity {
+                id: EntityId("switch.garage_right".into()),
+                name: "Garage Right".into(),
+                kind: EntityKind::Switch,
+                is_on: false,
+                value: None,
+            },
+        ],
+    };
+
+    let (client, _fetch_count, _toggle) = build_tracking_client(state);
+    let mut config = test_config();
+    config.solar_sample_secs = 1; // faster samples for testing
+
+    let service = Arc::new(DashboardService::new(
+        client,
+        Arc::new(MockLayoutRepo),
+        haretropanel::application::services::DashboardCacheConfig {
+            default_ttl_secs: 5,
+            light_ttl_secs: None,
+            switch_ttl_secs: None,
+            sensor_ttl_secs: None,
+            climate_ttl_secs: None,
+        },
+        config,
+    ));
+
+    // Start periodic updates — requires Arc<Self>
+    let service_clone = service.clone();
+    service_clone.start_periodic_updates();
+
+    let (listener, port) = bind_random().await;
+    let app = build_ws_router(service);
+
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let uri = format!("ws://127.0.0.1:{port}/ws/solar");
+    let (_, mut ws_rx) = async_tungstenite::tokio::connect_async(&uri)
+        .await
+        .unwrap()
+        .0
+        .split();
+
+    // Wait up to 12 seconds for the first periodic message (10s interval + buffer)
+    let received = tokio::time::timeout(Duration::from_secs(12), async {
+        while let Some(msg) = ws_rx.next().await {
+            match msg {
+                Ok(WsMessage::Text(text)) => {
+                    let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+                    return Some(value);
+                }
+                _ => continue,
+            }
+        }
+        None
+    }).await.expect("timeout waiting for periodic broadcast").expect("should receive a message");
+
+    // Verify all expected fields are present
+    assert!(received.get("watts").is_some(), "missing 'watts'");
+    assert!(received.get("chart_labels").is_some(), "missing 'chart_labels'");
+    assert!(received.get("chart_values").is_some(), "missing 'chart_values'");
+    assert!(received.get("charger_amps").is_some(), "missing 'charger_amps'");
+    assert!(received.get("garage_left").is_some(), "missing 'garage_left'");
+    assert!(received.get("garage_right").is_some(), "missing 'garage_right'");
+    assert!(received.get("buffer_temps").is_some(), "missing 'buffer_temps'");
+    assert!(received.get("pump_status").is_some(), "missing 'pump_status'");
+
+    // watts should be 2500 (our entity value)
+    assert_eq!(received["watts"], 2500.0, "watts should match entity value");
+
+    // Cleanup
+    server.abort();
+    let _ = server.await;
+}
