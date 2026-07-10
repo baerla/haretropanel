@@ -329,11 +329,11 @@ async fn test_get_settings_still_works() {
 
 // ── WebSocket E2E Tests ────────────────────────────────────────────────
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use async_tungstenite::tungstenite::Message as WsMessage;
 use axum::routing::get;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::net::TcpListener;
 
 /// Helper: bind a random-port TCP listener and return (listener, port).
@@ -355,11 +355,13 @@ fn build_ws_router(service: Arc<DashboardService>) -> Router {
 }
 
 /// Build a tracking mock HA client that counts fetches and tracks toggles.
-fn build_tracking_client(state: DashboardState) -> (
+fn build_tracking_client(
+    state: DashboardState,
+) -> (
     Arc<TrackingHaClient>,
-    std::sync::Arc<AtomicUsize>,  // fetch counter
-    std::sync::Arc<AtomicBool>,   // toggle counter
-    std::sync::Arc<AtomicBool>,   // run_script counter
+    std::sync::Arc<AtomicUsize>, // fetch counter
+    std::sync::Arc<AtomicBool>,  // toggle counter
+    std::sync::Arc<AtomicBool>,  // run_script counter
 ) {
     let fetch_count = Arc::new(AtomicUsize::new(0));
     let toggle_count = Arc::new(AtomicBool::new(false));
@@ -377,7 +379,8 @@ fn build_tracking_client(state: DashboardState) -> (
 }
 
 struct TrackingHaClient {
-    state_response: Arc<dyn Fn() -> haretropanel::shared::error::AppResult<DashboardState> + Send + Sync>,
+    state_response:
+        Arc<dyn Fn() -> haretropanel::shared::error::AppResult<DashboardState> + Send + Sync>,
     fetch_count: std::sync::Arc<AtomicUsize>,
     toggle_called: std::sync::Arc<AtomicBool>,
     run_script_called: std::sync::Arc<AtomicBool>,
@@ -385,7 +388,9 @@ struct TrackingHaClient {
 
 #[async_trait::async_trait]
 impl HomeAssistantClient for TrackingHaClient {
-    async fn fetch_dashboard_state(&self) -> haretropanel::shared::error::AppResult<DashboardState> {
+    async fn fetch_dashboard_state(
+        &self,
+    ) -> haretropanel::shared::error::AppResult<DashboardState> {
         self.fetch_count.fetch_add(1, Ordering::SeqCst);
         (self.state_response)()
     }
@@ -393,7 +398,10 @@ impl HomeAssistantClient for TrackingHaClient {
         self.toggle_called.store(true, Ordering::SeqCst);
         Ok(())
     }
-    async fn run_script(&self, _entity_id: &EntityId) -> haretropanel::shared::error::AppResult<()> {
+    async fn run_script(
+        &self,
+        _entity_id: &EntityId,
+    ) -> haretropanel::shared::error::AppResult<()> {
         self.run_script_called.store(true, Ordering::SeqCst);
         Ok(())
     }
@@ -465,9 +473,10 @@ async fn ws_force_refresh_command() {
 
     // Send the force_refresh command
     let cmd = serde_json::json!({"action": "force_refresh"});
-    ws_tx.send(WsMessage::Text(
-        serde_json::to_string(&cmd).unwrap().into()
-    )).await.unwrap();
+    ws_tx
+        .send(WsMessage::Text(serde_json::to_string(&cmd).unwrap().into()))
+        .await
+        .unwrap();
 
     // Receive the response with timeout
     let response = tokio::time::timeout(Duration::from_secs(10), async {
@@ -487,7 +496,9 @@ async fn ws_force_refresh_command() {
             }
         }
         serde_json::json!({"type": "eof"})
-    }).await.expect("timeout waiting for force_refresh response");
+    })
+    .await
+    .expect("timeout waiting for force_refresh response");
 
     // Verify response
     assert!(
@@ -495,12 +506,18 @@ async fn ws_force_refresh_command() {
         "force_refresh response should contain 'watts' field, got: {response}"
     );
     if let Some(type_val) = response.get("type") {
-        assert_ne!(type_val, "error", "force_refresh response should not be an error: {response}");
+        assert_ne!(
+            type_val, "error",
+            "force_refresh response should not be an error: {response}"
+        );
     }
 
     // The fetch should have happened during force_refresh
     let count = fetch_count.load(Ordering::SeqCst);
-    assert!(count >= 1, "fetch_count should be >= 1 after force_refresh, got {count}");
+    assert!(
+        count >= 1,
+        "fetch_count should be >= 1 after force_refresh, got {count}"
+    );
 
     // Cleanup
     drop(ws_tx);
@@ -512,15 +529,13 @@ async fn ws_force_refresh_command() {
 #[tokio::test]
 async fn ws_toggle_command() {
     let state = DashboardState {
-        entities: vec![
-            Entity {
-                id: EntityId("light.test".into()),
-                name: "Test Light".into(),
-                kind: EntityKind::Light,
-                is_on: false,
-                value: None,
-            },
-        ],
+        entities: vec![Entity {
+            id: EntityId("light.test".into()),
+            name: "Test Light".into(),
+            kind: EntityKind::Light,
+            is_on: false,
+            value: None,
+        }],
     };
 
     let (client, _fetch_count, toggle_called, _script) = build_tracking_client(state);
@@ -555,9 +570,10 @@ async fn ws_toggle_command() {
 
     // Send toggle command
     let cmd = serde_json::json!({"action": "toggle", "entity_id": "light.test"});
-    ws_tx.send(WsMessage::Text(
-        serde_json::to_string(&cmd).unwrap().into()
-    )).await.unwrap();
+    ws_tx
+        .send(WsMessage::Text(serde_json::to_string(&cmd).unwrap().into()))
+        .await
+        .unwrap();
 
     // Receive response
     let response = tokio::time::timeout(Duration::from_secs(10), async {
@@ -570,11 +586,19 @@ async fn ws_toggle_command() {
             }
         }
         serde_json::json!({"type": "eof"})
-    }).await.expect("timeout waiting for toggle response");
+    })
+    .await
+    .expect("timeout waiting for toggle response");
 
     // Verify response
-    assert!(response.get("watts").is_some(), "toggle response should have 'watts': {response}");
-    assert!(toggle_called.load(Ordering::SeqCst), "toggle should have been called on HA client");
+    assert!(
+        response.get("watts").is_some(),
+        "toggle response should have 'watts': {response}"
+    );
+    assert!(
+        toggle_called.load(Ordering::SeqCst),
+        "toggle should have been called on HA client"
+    );
 
     // Cleanup
     drop(ws_tx);
@@ -660,17 +684,41 @@ async fn ws_periodic_broadcast() {
             }
         }
         None
-    }).await.expect("timeout waiting for periodic broadcast").expect("should receive a message");
+    })
+    .await
+    .expect("timeout waiting for periodic broadcast")
+    .expect("should receive a message");
 
     // Verify all expected fields are present
     assert!(received.get("watts").is_some(), "missing 'watts'");
-    assert!(received.get("chart_labels").is_some(), "missing 'chart_labels'");
-    assert!(received.get("chart_values").is_some(), "missing 'chart_values'");
-    assert!(received.get("charger_amps").is_some(), "missing 'charger_amps'");
-    assert!(received.get("garage_left").is_some(), "missing 'garage_left'");
-    assert!(received.get("garage_right").is_some(), "missing 'garage_right'");
-    assert!(received.get("buffer_temps").is_some(), "missing 'buffer_temps'");
-    assert!(received.get("pump_status").is_some(), "missing 'pump_status'");
+    assert!(
+        received.get("chart_labels").is_some(),
+        "missing 'chart_labels'"
+    );
+    assert!(
+        received.get("chart_values").is_some(),
+        "missing 'chart_values'"
+    );
+    assert!(
+        received.get("charger_amps").is_some(),
+        "missing 'charger_amps'"
+    );
+    assert!(
+        received.get("garage_left").is_some(),
+        "missing 'garage_left'"
+    );
+    assert!(
+        received.get("garage_right").is_some(),
+        "missing 'garage_right'"
+    );
+    assert!(
+        received.get("buffer_temps").is_some(),
+        "missing 'buffer_temps'"
+    );
+    assert!(
+        received.get("pump_status").is_some(),
+        "missing 'pump_status'"
+    );
 
     // watts should be 2500 (our entity value)
     assert_eq!(received["watts"], 2500.0, "watts should match entity value");
@@ -684,16 +732,16 @@ async fn ws_periodic_broadcast() {
 // These tests cover dashboard_handler.rs and settings_handler.rs,
 // which have 0% coverage when only the WebSocket route is tested.
 
-use haretropanel::application::services::DashboardCacheConfig;
 use axum::http::StatusCode;
+use haretropanel::application::services::DashboardCacheConfig;
 
 /// Helper: build a full Axum router with ALL routes (dashboard + settings + WS).
 fn build_full_router(service: Arc<DashboardService>) -> Router {
+    use axum::routing::{get, post};
     use haretropanel::infrastructure::web::handlers::dashboard_handler::get_dashboard;
     use haretropanel::infrastructure::web::handlers::settings_handler::get_entity_settings;
     use haretropanel::infrastructure::web::handlers::websocket_handler::ws_solar;
     use haretropanel::infrastructure::web::AppState;
-    use axum::routing::{get, post};
 
     Router::new()
         .route("/", get(get_dashboard))
@@ -747,7 +795,9 @@ async fn ws_invalid_command_returns_error() {
     let invalid_msg = r#"not_valid_json"#;
 
     use futures_util::SinkExt;
-    ws.send(WsMessage::Text(invalid_msg.to_string())).await.unwrap();
+    ws.send(WsMessage::Text(invalid_msg.to_string()))
+        .await
+        .unwrap();
 
     // Wait for error response
     let error_text = tokio::time::timeout(Duration::from_secs(3), async {
@@ -758,12 +808,19 @@ async fn ws_invalid_command_returns_error() {
             }
         }
         None
-    }).await;
+    })
+    .await;
 
     let error_text = error_text.unwrap().expect("should receive error message");
     let error_json: serde_json::Value = serde_json::from_str(&error_text).unwrap();
-    assert_eq!(error_json["type"], "error", "invalid command should return error type");
-    assert!(error_json["message"].is_string(), "error should have message string");
+    assert_eq!(
+        error_json["type"], "error",
+        "invalid command should return error type"
+    );
+    assert!(
+        error_json["message"].is_string(),
+        "error should have message string"
+    );
 
     server.abort();
     let _ = server.await;
@@ -774,9 +831,7 @@ async fn ws_invalid_command_returns_error() {
 /// Covers the `RunScript` arm in websocket_handler.rs.
 #[tokio::test]
 async fn ws_run_script_command() {
-    let state = DashboardState {
-        entities: vec![],
-    };
+    let state = DashboardState { entities: vec![] };
 
     let (client, _fetch_count, _toggle, script_called) = build_tracking_client(state);
 
@@ -816,7 +871,12 @@ async fn ws_run_script_command() {
         .0
         .split();
     use futures_util::SinkExt;
-    ws_tx.send(WsMessage::Text(r#"{"action":"run_script","entity_id":"script.away_mode"}"#.to_string())).await.unwrap();
+    ws_tx
+        .send(WsMessage::Text(
+            r#"{"action":"run_script","entity_id":"script.away_mode"}"#.to_string(),
+        ))
+        .await
+        .unwrap();
 
     // Wait for response on the first connection
     let _response = tokio::time::timeout(Duration::from_secs(3), async {
@@ -827,9 +887,13 @@ async fn ws_run_script_command() {
             }
         }
         None
-    }).await;
+    })
+    .await;
 
-    assert!(script_called.load(Ordering::SeqCst), "run_script should have been called");
+    assert!(
+        script_called.load(Ordering::SeqCst),
+        "run_script should have been called"
+    );
 
     server.abort();
     let _ = server.await;
@@ -918,7 +982,9 @@ async fn ws_save_settings_command() {
 
     // Send save_settings command with valid data
     let settings_json = r#"{"action":"save_settings","visible":["sensor.solar","light.lamp"],"pages":{"solar":1,"garage":2}}"#;
-    ws.send(WsMessage::Text(settings_json.into())).await.unwrap();
+    ws.send(WsMessage::Text(settings_json.into()))
+        .await
+        .unwrap();
 
     // Wait for response - should succeed with dashboard data
     // (SaveSettings calls build_fresh_payload after saving)
@@ -931,12 +997,16 @@ async fn ws_save_settings_command() {
                 None => return None,
             }
         }
-    }).await;
+    })
+    .await;
 
     let response_text = response.unwrap().expect("should receive response");
     let response_json: serde_json::Value = serde_json::from_str(&response_text).unwrap();
     // SaveSettings calls build_fresh_payload which returns dashboard data with watts field
-    assert!(response_json.get("watts").is_some(), "response should contain watts field");
+    assert!(
+        response_json.get("watts").is_some(),
+        "response should contain watts field"
+    );
 
     server.abort();
     let _ = server.await;
@@ -1012,7 +1082,9 @@ async fn test_get_dashboard_handler() {
     let body = resp.text().await.unwrap();
     assert!(!body.is_empty(), "Dashboard should return non-empty body");
     assert!(
-        body.contains("<!DOCTYPE html>") || body.contains("<!doctype html>") || body.contains("HARetroPanel"),
+        body.contains("<!DOCTYPE html>")
+            || body.contains("<!doctype html>")
+            || body.contains("HARetroPanel"),
         "Dashboard should contain HTML content"
     );
 
@@ -1098,15 +1170,23 @@ async fn test_get_settings_handler() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     let body = resp.text().await.unwrap();
-    assert!(!body.is_empty(), "Settings page should return non-empty body");
     assert!(
-        body.contains("<!DOCTYPE html>") || body.contains("<!doctype html>") || body.contains("HARetroPanel"),
+        !body.is_empty(),
+        "Settings page should return non-empty body"
+    );
+    assert!(
+        body.contains("<!DOCTYPE html>")
+            || body.contains("<!doctype html>")
+            || body.contains("HARetroPanel"),
         "Settings page should contain HTML content"
     );
 
     // The page should contain entity names from our mock state
-    assert!(body.contains("Bedroom Light") || body.contains("Solar"),
-        "Settings page should contain entity names, body: {}", &body[..body.len().min(500)]);
+    assert!(
+        body.contains("Bedroom Light") || body.contains("Solar"),
+        "Settings page should contain entity names, body: {}",
+        &body[..body.len().min(500)]
+    );
 
     server.abort();
     let _ = server.await;

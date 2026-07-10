@@ -58,6 +58,12 @@ struct BufferTempSample {
 }
 
 #[derive(Clone, Debug)]
+struct PumpStateSample {
+    timestamp: SystemTime,
+    pump_on: bool,
+}
+
+#[derive(Clone, Debug)]
 struct GoeEnergyTracker {
     last_value: Option<f64>,
     last_change: Option<Instant>,
@@ -70,6 +76,7 @@ pub struct DashboardService {
     state_cache: RwLock<Option<CachedDashboardState>>,
     solar_history: RwLock<VecDeque<SolarSample>>,
     buffer_temp_history: RwLock<VecDeque<BufferTempSample>>,
+    pump_history: RwLock<VecDeque<PumpStateSample>>,
     goe_energy_tracker: RwLock<GoeEnergyTracker>,
     config: crate::config::AppConfig,
     ws_tx: tokio::sync::broadcast::Sender<serde_json::Value>,
@@ -89,6 +96,7 @@ impl DashboardService {
             state_cache: RwLock::new(None),
             solar_history: RwLock::new(VecDeque::new()),
             buffer_temp_history: RwLock::new(VecDeque::new()),
+            pump_history: RwLock::new(VecDeque::new()),
             goe_energy_tracker: RwLock::new(GoeEnergyTracker {
                 last_value: None,
                 last_change: None,
@@ -211,19 +219,20 @@ impl DashboardService {
                                 "status_label": pump_status.status_label,
                                 "css_class": pump_status.css_class,
                             },
+                            "pump_states": self.periodic_pump_states().await,
                         });
 
                         // Ignore errors if no receivers
-                            let sent = ws_sender.send(payload.clone());
-                            if sent.is_ok() {
-                                tracing::debug!(
-                                    "Periodic WS payload sent: watts={}, chart_values_len={}",
-                                    solar_watts,
-                                    chart_points.values.len()
-                                );
-                            } else {
-                                tracing::debug!("Periodic WS send failed: no receivers");
-                            }
+                        let sent = ws_sender.send(payload.clone());
+                        if sent.is_ok() {
+                            tracing::debug!(
+                                "Periodic WS payload sent: watts={}, chart_values_len={}",
+                                solar_watts,
+                                chart_points.values.len()
+                            );
+                        } else {
+                            tracing::debug!("Periodic WS send failed: no receivers");
+                        }
                     }
                     Err(e) => {
                         tracing::error!("Periodic update failed: {:?}", e);
@@ -231,6 +240,23 @@ impl DashboardService {
                 }
             }
         });
+    }
+
+    async fn periodic_pump_states(&self) -> Vec<serde_json::Value> {
+        let history = self.pump_history.read().await;
+        history
+            .iter()
+            .map(|sample| {
+                let epoch = sample
+                    .timestamp
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or(std::time::Duration::ZERO);
+                serde_json::json!({
+                    "t": epoch.as_millis(),
+                    "on": sample.pump_on,
+                })
+            })
+            .collect()
     }
 
     fn ttl_secs_for_kind(&self, kind: &EntityKind) -> u64 {
@@ -394,6 +420,14 @@ impl DashboardService {
         history
             .iter()
             .map(|sample| (sample.timestamp, sample.watts))
+            .collect()
+    }
+
+    pub async fn compute_pump_status_history(&self) -> Vec<(SystemTime, bool)> {
+        let history = self.pump_history.read().await;
+        history
+            .iter()
+            .map(|sample| (sample.timestamp, sample.pump_on))
             .collect()
     }
 
@@ -674,6 +708,19 @@ impl DashboardService {
             solar_return: parse(solar_return),
         };
 
+        // Record pump state for history bar
+        let pump_on = if cfg.solar_pump_entity_id.is_empty() {
+            false
+        } else {
+            find(&cfg.solar_pump_entity_id)
+                .map(|e| e.is_on)
+                .unwrap_or(false)
+        };
+        let pump_sample = PumpStateSample {
+            timestamp: SystemTime::now(),
+            pump_on,
+        };
+
         let max_age = Duration::from_secs(self.config.solar_history_minutes * 60);
         if let Ok(mut history) = self.buffer_temp_history.try_write() {
             history.push_back(sample);
@@ -684,6 +731,21 @@ impl DashboardService {
                     > max_age
                 {
                     history.pop_front();
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if let Ok(mut pump_history) = self.pump_history.try_write() {
+            pump_history.push_back(pump_sample);
+            while let Some(el) = pump_history.iter().next() {
+                if SystemTime::now()
+                    .duration_since(el.timestamp)
+                    .unwrap_or(Duration::ZERO)
+                    > max_age
+                {
+                    pump_history.pop_front();
                 } else {
                     break;
                 }

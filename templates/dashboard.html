@@ -87,8 +87,18 @@
                 </div>
             </div>
 
-            <div class="buffer-temp-chart">
-                <canvas id="bufferChart"></canvas>
+            <div class="buffer-temp-row">
+                <div class="buffer-temp-chart">
+                    <canvas id="bufferChart"></canvas>
+                </div>
+                <div id="buffer-top-wrapper" class="buffer-top-tile">
+                    <div class="buffer-top-name">Puffer Speicher Oben</div>
+                    <div id="buffer-top-value" class="buffer-top-value">{{ dashboard.buffer_top_temp }}</div>
+                </div>
+            </div>
+            <div class="buffer-temp-row pump-status-row">
+                <canvas id="pumpStatusChart"></canvas>
+                <div class="pump-status-label">Pumpe:</div>
             </div>
         </section>
 
@@ -454,7 +464,99 @@
                 }
             });
             console.log('Buffer chart initialized');
-        
+
+            // Pump status bar
+            var pumpBarData = {{ dashboard.pump_states_js | safe }};
+            var pumpBufferLabels = {{ dashboard.buffer_chart.chart_labels_js | safe }};
+            FL.info('PUMP', 'pumpBarData length=' + pumpBarData.length + ', labels=' + pumpBufferLabels.length);
+            if (pumpBarData.length > 0) {
+                FL.info('PUMP', 'Rendering pump bar on init with ' + pumpBarData.length + ' samples');
+                renderPumpBar(pumpBarData, pumpBufferLabels);
+            } else {
+                FL.info('PUMP', 'Skipping render — no pump states');
+            }
+
+            console.log('Pump status bar initialized with ' + pumpBarData.length + ' samples');
+
+            // Init buffer top tile
+            var bufferTopEl = document.getElementById('buffer-top-value');
+            if (bufferTopEl && bufferTopVals.length > 0) {
+                var lastTop = bufferTopVals[bufferTopVals.length - 1];
+                if (lastTop != null) bufferTopEl.textContent = parseFloat(lastTop).toFixed(1) + '°C';
+            }
+
+            function renderPumpBar(states, labels) {
+                var canvas = document.getElementById('pumpStatusChart');
+                if (!canvas) { FL.warn('PUMP', 'canvas not found'); return; }
+                var ctx = canvas.getContext('2d');
+                var dpr = window.devicePixelRatio || 1;
+                var rect = canvas.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) return;
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                ctx.scale(dpr, dpr);
+                var w = rect.width;
+                var h = rect.height;
+
+                var now = Date.now();
+                var historyMs = {{ dashboard.solar.history_minutes }} * 60 * 1000;
+                var windowStart = now - historyMs;
+                var windowEnd = now;
+
+                FL.info('PUMP', 'windowStart=' + windowStart + ' windowEnd=' + windowEnd + ' statesLen=' + states.length + ' labelsLen=' + labels.length);
+                if (states.length > 0) {
+                    FL.info('PUMP', 'sample state t=' + states[0].t + ' ts=' + new Date(states[0].t).toISOString());
+                }
+
+                // Draw background (red = off)
+                ctx.fillStyle = 'rgba(220, 80, 80, 0.55)';
+                ctx.fillRect(0, 0, w, h);
+
+                // Overlay green segments where pump was on
+                var greenSegments = 0;
+                for (var i = 0; i < states.length; i++) {
+                    var s = states[i];
+                    var segStart = Math.max(s.t, windowStart);
+                    var x1 = ((segStart - windowStart) / (windowEnd - windowStart)) * w;
+
+                    // Find end of consecutive same-state run
+                    var j = i;
+                    var x2 = x1;
+                    while (j < states.length && states[j].on === s.on) {
+                        var next = states[j];
+                        var nextStart = Math.max(next.t, windowStart);
+                        var nextX = ((nextStart - windowStart) / (windowEnd - windowStart)) * w;
+                        if (j < states.length - 1) {
+                            var nx2 = ((Math.max(states[j + 1].t, windowStart) - windowStart) / (windowEnd - windowStart)) * w;
+                            nextX = nx2;
+                        }
+                        x2 = Math.max(x2, nextX);
+                        j++;
+                    }
+                    if (s.on) {
+                        ctx.fillStyle = 'rgba(50, 200, 100, 0.7)';
+                        ctx.fillRect(x1, 0, Math.max(x2 - x1, 1), h);
+                        greenSegments++;
+                    }
+                    i = j - 1;
+                }
+                FL.info('PUMP', 'drawn ' + greenSegments + ' green segments out of ' + states.length + ' total');
+
+                // Add subtle border
+                ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(0, 0, w, h);
+            }
+
+            // Resize handler for pump bar
+            window.addEventListener('resize', function() {
+                if (pumpBarData.length > 0) {
+                    renderPumpBar(pumpBarData, pumpBufferLabels);
+                }
+            });
+
+            console.log('Pump status bar initialized');
+
 
             console.log('Solar WebSocket started');
 
@@ -527,6 +629,11 @@
                         bufferChart.data.datasets[3].data = (data.buffer_temps.solar_return || []).slice(-maxDataPoints);
                         bufferChart.update();
                     }
+                }
+
+                // Update pump status bar
+                if (data.pump_states && data.pump_states.length > 0) {
+                    renderPumpBar(data.pump_states, pumpBufferLabels);
                 }
 
                 // Update pump tile

@@ -91,10 +91,25 @@ mod tests {
 
     #[test]
     fn test_entity_kind_to_json_string() {
-        assert_eq!(serde_json::to_string(&EntityKind::Light).unwrap(), "\"Light\"");
-        assert_eq!(serde_json::to_string(&EntityKind::Switch).unwrap(), "\"Switch\"");
-        assert_eq!(serde_json::to_string(&EntityKind::Sensor).unwrap(), "\"Sensor\"");
-        assert_eq!(serde_json::to_string(&EntityKind::Climate).unwrap(), "\"Climate\"");
-        assert_eq!(serde_json::to_string(&EntityKind::Script).unwrap(), "\"Script\"");
+        assert_eq!(
+            serde_json::to_string(&EntityKind::Light).unwrap(),
+            "\"Light\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EntityKind::Switch).unwrap(),
+            "\"Switch\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EntityKind::Sensor).unwrap(),
+            "\"Sensor\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EntityKind::Climate).unwrap(),
+            "\"Climate\""
+        );
+        assert_eq!(
+            serde_json::to_string(&EntityKind::Script).unwrap(),
+            "\"Script\""
+        );
     }
 }

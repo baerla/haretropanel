@@ -83,6 +83,34 @@ pub async fn get_dashboard(
         .dashboard_service
         .compute_pump_status(&dashboard_state);
 
+    // Compute pump states for status bar
+    let pump_states = state.dashboard_service.compute_pump_status_history().await;
+    let pump_states_js = format!(
+        "[{}]",
+        pump_states
+            .iter()
+            .map(|(t, on)| {
+                let epoch = t
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or(std::time::Duration::ZERO)
+                    .as_millis();
+                format!("{{\"t\":{},\"on\":{}}}", epoch, on)
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+
+    // Compute current buffer top temperature
+    let buffer_top_val = dashboard_state
+        .entities
+        .iter()
+        .find(|e| e.id.0 == cfg.solar_buffer_top_entity_id)
+        .and_then(|e| e.value.as_deref())
+        .and_then(|v| v.split_whitespace().next())
+        .and_then(|n| n.parse::<f64>().ok())
+        .map(|v| format!("{:.1}°C", v))
+        .unwrap_or_else(|| "--°C".to_string());
+
     let solar_vm = SolarViewModel {
         watts_label: format!("{:.0} W", solar_watts),
         max_watts_label,
@@ -102,6 +130,7 @@ pub async fn get_dashboard(
                 .collect::<Vec<_>>()
                 .join(",")
         ),
+        history_minutes: cfg.solar_history_minutes,
     };
 
     let charger_state = state
@@ -231,6 +260,8 @@ pub async fn get_dashboard(
         page_tabs,
         active_tab,
         page_entities,
+        pump_states_js,
+        buffer_top_temp: buffer_top_val,
     };
 
     let template = DashboardTemplate {

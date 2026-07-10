@@ -62,8 +62,14 @@ pub fn make_garage_door_vm(
     let mut name = entity
         .map(|e| e.name.clone())
         .unwrap_or_else(|| default_name.to_string());
-    name = name.strip_prefix("Garage").map(|s| s.trim().to_string()).unwrap_or(name);
-    name = name.strip_suffix("Offen").map(|s| s.trim().to_string()).unwrap_or(name);
+    name = name
+        .strip_prefix("Garage")
+        .map(|s| s.trim().to_string())
+        .unwrap_or(name);
+    name = name
+        .strip_suffix("Offen")
+        .map(|s| s.trim().to_string())
+        .unwrap_or(name);
     name = name.trim().to_string();
 
     let is_open = entity.map(|e| e.is_on).unwrap_or(false);

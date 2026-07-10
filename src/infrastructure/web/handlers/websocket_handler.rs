@@ -1,6 +1,6 @@
-use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::FromRequest;
+use axum::extract::State;
 use axum::http::header::AUTHORIZATION;
 use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
@@ -15,11 +15,7 @@ fn query_param(query: Option<&str>, key: &str) -> Option<String> {
     query?
         .split('&')
         .find_map(|p| p.strip_prefix(&format!("{key}=")))
-        .and_then(|v| {
-            v.splitn(2, '=')
-                .last()
-                .map(|s| s.to_string())
-        })
+        .and_then(|v| v.splitn(2, '=').last().map(|s| s.to_string()))
 }
 
 /// Parse a Bearer token from an Authorization header.
@@ -32,7 +28,11 @@ fn bearer_token(headers: &axum::http::HeaderMap) -> Option<String> {
 }
 
 /// Validate the WebSocket auth token. Returns true if auth passes or is not configured.
-fn check_ws_auth(headers: &axum::http::HeaderMap, uri: &axum::http::Uri, expected_token: &str) -> bool {
+fn check_ws_auth(
+    headers: &axum::http::HeaderMap,
+    uri: &axum::http::Uri,
+    expected_token: &str,
+) -> bool {
     let auth = bearer_token(headers)
         .or(query_param(uri.query(), "token"))
         .unwrap_or_default();
@@ -44,11 +44,7 @@ pub async fn ws_solar(
     request: axum::extract::Request,
 ) -> impl IntoResponse {
     // Check auth before upgrading
-    let expected_token = state
-        .dashboard_service
-        .config()
-        .ws_auth_token
-        .clone();
+    let expected_token = state.dashboard_service.config().ws_auth_token.clone();
     if let Some(ref token) = expected_token {
         if !check_ws_auth(request.headers(), request.uri(), token) {
             return axum::http::StatusCode::UNAUTHORIZED.into_response();
@@ -446,23 +442,22 @@ async fn handle_client_command(text: &str, service: &DashboardService) -> serde_
         }
         ClientCommand::SaveSettings { visible, pages } => {
             let original_count = pages.len();
-            let pages: std::collections::HashMap<String, usize> = pages
-                .into_iter()
-                .filter(|(_, p)| *p >= 1)
-                .collect();
+            let pages: std::collections::HashMap<String, usize> =
+                pages.into_iter().filter(|(_, p)| *p >= 1).collect();
             let skipped = original_count - pages.len();
             if skipped > 0 {
-                warn!(skipped, "WS save_settings: skipped {} invalid page number(s)", skipped);
+                warn!(
+                    skipped,
+                    "WS save_settings: skipped {} invalid page number(s)", skipped
+                );
             }
             info!(
                 "WS save_settings: visible={}, pages={}",
                 visible.len(),
                 pages.len()
             );
-            let ids: Vec<crate::domain::EntityId> = visible
-                .into_iter()
-                .map(crate::domain::EntityId)
-                .collect();
+            let ids: Vec<crate::domain::EntityId> =
+                visible.into_iter().map(crate::domain::EntityId).collect();
             if let Err(e) = service.save_visible_entities(ids).await {
                 error!("WS save visible failed: {}", e);
                 return serde_json::json!({
@@ -575,5 +570,22 @@ async fn build_fresh_payload(service: &DashboardService) -> serde_json::Value {
             "status_label": pump_status.status_label,
             "css_class": pump_status.css_class,
         },
+        "pump_states": compute_pump_states_json(&service).await,
     })
+}
+
+async fn compute_pump_states_json(service: &DashboardService) -> Vec<serde_json::Value> {
+    let pump_states = service.compute_pump_status_history().await;
+    pump_states
+        .iter()
+        .map(|(t, on)| {
+            let epoch = t
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or(std::time::Duration::ZERO);
+            serde_json::json!({
+                "t": epoch.as_millis(),
+                "on": on,
+            })
+        })
+        .collect()
 }

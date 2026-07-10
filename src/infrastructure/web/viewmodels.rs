@@ -82,6 +82,7 @@ pub struct SolarViewModel {
     pub max_watts_label: String,
     pub chart_labels_js: String,
     pub chart_values_js: String,
+    pub history_minutes: u64,
 }
 
 pub struct ChargerViewModel {
@@ -131,6 +132,8 @@ pub struct DashboardViewModel {
     pub page_tabs: Vec<String>,
     pub active_tab: usize,
     pub page_entities: Vec<EntityViewModel>,
+    pub pump_states_js: String,
+    pub buffer_top_temp: String,
 }
 
 #[derive(Template)]
