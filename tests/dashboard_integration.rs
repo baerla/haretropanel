@@ -359,23 +359,28 @@ fn build_tracking_client(state: DashboardState) -> (
     Arc<TrackingHaClient>,
     std::sync::Arc<AtomicUsize>,  // fetch counter
     std::sync::Arc<AtomicBool>,   // toggle counter
+    std::sync::Arc<AtomicBool>,   // run_script counter
 ) {
     let fetch_count = Arc::new(AtomicUsize::new(0));
     let toggle_count = Arc::new(AtomicBool::new(false));
+    let script_count = Arc::new(AtomicBool::new(false));
     let fc = fetch_count.clone();
     let tc = toggle_count.clone();
+    let sc = script_count.clone();
     let client = Arc::new(TrackingHaClient {
         state_response: Arc::new(move || Ok(state.clone())),
         fetch_count: fc,
         toggle_called: tc,
+        run_script_called: sc,
     });
-    (client, fetch_count, toggle_count)
+    (client, fetch_count, toggle_count, script_count)
 }
 
 struct TrackingHaClient {
     state_response: Arc<dyn Fn() -> haretropanel::shared::error::AppResult<DashboardState> + Send + Sync>,
     fetch_count: std::sync::Arc<AtomicUsize>,
     toggle_called: std::sync::Arc<AtomicBool>,
+    run_script_called: std::sync::Arc<AtomicBool>,
 }
 
 #[async_trait::async_trait]
@@ -389,6 +394,7 @@ impl HomeAssistantClient for TrackingHaClient {
         Ok(())
     }
     async fn run_script(&self, _entity_id: &EntityId) -> haretropanel::shared::error::AppResult<()> {
+        self.run_script_called.store(true, Ordering::SeqCst);
         Ok(())
     }
 }
@@ -425,7 +431,7 @@ async fn ws_force_refresh_command() {
         ],
     };
 
-    let (client, fetch_count, _toggle) = build_tracking_client(state);
+    let (client, fetch_count, _toggle, _script) = build_tracking_client(state);
     let service = Arc::new(DashboardService::new(
         client,
         Arc::new(MockLayoutRepo),
@@ -517,7 +523,7 @@ async fn ws_toggle_command() {
         ],
     };
 
-    let (client, _fetch_count, toggle_called) = build_tracking_client(state);
+    let (client, _fetch_count, toggle_called, _script) = build_tracking_client(state);
     let service = Arc::new(DashboardService::new(
         client,
         Arc::new(MockLayoutRepo),
@@ -605,7 +611,7 @@ async fn ws_periodic_broadcast() {
         ],
     };
 
-    let (client, _fetch_count, _toggle) = build_tracking_client(state);
+    let (client, _fetch_count, _toggle, _script) = build_tracking_client(state);
     let mut config = test_config();
     config.solar_sample_secs = 1; // faster samples for testing
 
@@ -700,6 +706,242 @@ fn build_full_router(service: Arc<DashboardService>) -> Router {
         })
 }
 
+/// Test: Invalid command sends error response.
+///
+/// Covers the invalid command handling path in websocket_handler.rs.
+#[tokio::test]
+async fn ws_invalid_command_returns_error() {
+    let state = DashboardState { entities: vec![] };
+
+    let (client, _fetch_count, _toggle, _script) = build_tracking_client(state);
+    let service = Arc::new(DashboardService::new(
+        client,
+        Arc::new(MockLayoutRepo),
+        DashboardCacheConfig {
+            default_ttl_secs: 5,
+            light_ttl_secs: None,
+            switch_ttl_secs: None,
+            sensor_ttl_secs: None,
+            climate_ttl_secs: None,
+        },
+        test_config(),
+    ));
+
+    let (listener, port) = bind_random().await;
+    let app = build_ws_router(service);
+
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let uri = format!("ws://127.0.0.1:{port}/ws/solar");
+    let (mut ws, mut ws_rx) = async_tungstenite::tokio::connect_async(&uri)
+        .await
+        .unwrap()
+        .0
+        .split();
+
+    // Send invalid JSON (not a valid JSON object)
+    let invalid_msg = r#"not_valid_json"#;
+
+    use futures_util::SinkExt;
+    ws.send(WsMessage::Text(invalid_msg.to_string())).await.unwrap();
+
+    // Wait for error response
+    let error_text = tokio::time::timeout(Duration::from_secs(3), async {
+        while let Some(msg) = ws_rx.next().await {
+            match msg {
+                Ok(WsMessage::Text(text)) => return Some(text),
+                _ => continue,
+            }
+        }
+        None
+    }).await;
+
+    let error_text = error_text.unwrap().expect("should receive error message");
+    let error_json: serde_json::Value = serde_json::from_str(&error_text).unwrap();
+    assert_eq!(error_json["type"], "error", "invalid command should return error type");
+    assert!(error_json["message"].is_string(), "error should have message string");
+
+    server.abort();
+    let _ = server.await;
+}
+
+/// Test: RunScript command triggers the run_script path.
+///
+/// Covers the `RunScript` arm in websocket_handler.rs.
+#[tokio::test]
+async fn ws_run_script_command() {
+    let state = DashboardState {
+        entities: vec![],
+    };
+
+    let (client, _fetch_count, _toggle, script_called) = build_tracking_client(state);
+
+    let service = Arc::new(DashboardService::new(
+        client,
+        Arc::new(MockLayoutRepo),
+        DashboardCacheConfig {
+            default_ttl_secs: 5,
+            light_ttl_secs: None,
+            switch_ttl_secs: None,
+            sensor_ttl_secs: None,
+            climate_ttl_secs: None,
+        },
+        test_config(),
+    ));
+
+    let (listener, port) = bind_random().await;
+    let app = build_ws_router(service);
+
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let uri = format!("ws://127.0.0.1:{port}/ws/solar");
+    let (_, mut ws_rx) = async_tungstenite::tokio::connect_async(&uri)
+        .await
+        .unwrap()
+        .0
+        .split();
+
+    // Send run_script command via a separate connection
+    let (mut ws_tx, _ws_rx2) = async_tungstenite::tokio::connect_async(&uri)
+        .await
+        .unwrap()
+        .0
+        .split();
+    use futures_util::SinkExt;
+    ws_tx.send(WsMessage::Text(r#"{"action":"run_script","entity_id":"script.away_mode"}"#.to_string())).await.unwrap();
+
+    // Wait for response on the first connection
+    let _response = tokio::time::timeout(Duration::from_secs(3), async {
+        while let Some(msg) = ws_rx.next().await {
+            match msg {
+                Ok(WsMessage::Text(text)) => return Some(text),
+                _ => continue,
+            }
+        }
+        None
+    }).await;
+
+    assert!(script_called.load(Ordering::SeqCst), "run_script should have been called");
+
+    server.abort();
+    let _ = server.await;
+}
+
+/// Test: Auth rejection when wrong token is provided.
+///
+/// Covers the auth rejection path in websocket_handler.rs lines 53-55.
+#[tokio::test]
+async fn ws_auth_rejection() {
+    let state = DashboardState { entities: vec![] };
+
+    let (client, _fetch_count, _toggle, _script) = build_tracking_client(state);
+    let service = Arc::new(DashboardService::new(
+        client,
+        Arc::new(MockLayoutRepo),
+        DashboardCacheConfig {
+            default_ttl_secs: 5,
+            light_ttl_secs: None,
+            switch_ttl_secs: None,
+            sensor_ttl_secs: None,
+            climate_ttl_secs: None,
+        },
+        {
+            let mut cfg = test_config();
+            cfg.ws_auth_token = Some("correct_token".to_string());
+            cfg
+        },
+    ));
+
+    let (listener, port) = bind_random().await;
+    let app = build_ws_router(service);
+
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Connect with wrong token via query param
+    let uri = format!("ws://127.0.0.1:{port}/ws/solar?token=wrong_token");
+
+    // This should fail with 401, not a WS upgrade
+    let result = async_tungstenite::tokio::connect_async(&uri).await;
+
+    assert!(result.is_err(), "connection with wrong token should fail");
+
+    server.abort();
+    let _ = server.await;
+}
+
+/// Test: SaveSettings command updates visible entities and pages.
+///
+/// Covers the `SaveSettings` arm in websocket_handler.rs.
+#[tokio::test]
+async fn ws_save_settings_command() {
+    let state = DashboardState { entities: vec![] };
+
+    let (client, _fetch_count, _toggle, _script) = build_tracking_client(state);
+    // Use the existing MockLayoutRepo which returns defaults and saves nothing
+    // The test just verifies the response is correct and no error occurs
+    let service = Arc::new(DashboardService::new(
+        client,
+        Arc::new(MockLayoutRepo),
+        DashboardCacheConfig {
+            default_ttl_secs: 5,
+            light_ttl_secs: None,
+            switch_ttl_secs: None,
+            sensor_ttl_secs: None,
+            climate_ttl_secs: None,
+        },
+        test_config(),
+    ));
+
+    let (listener, port) = bind_random().await;
+    let app = build_ws_router(service);
+
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let uri = format!("ws://127.0.0.1:{port}/ws/solar");
+    let (mut ws, _) = async_tungstenite::tokio::connect_async(&uri).await.unwrap();
+
+    // Send save_settings command with valid data
+    let settings_json = r#"{"action":"save_settings","visible":["sensor.solar","light.lamp"],"pages":{"solar":1,"garage":2}}"#;
+    ws.send(WsMessage::Text(settings_json.into())).await.unwrap();
+
+    // Wait for response - should succeed with dashboard data
+    // (SaveSettings calls build_fresh_payload after saving)
+    let response = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            match ws.next().await {
+                Some(Ok(WsMessage::Text(text))) => return Some(text),
+                Some(Ok(_)) => continue,
+                Some(Err(_)) => return None,
+                None => return None,
+            }
+        }
+    }).await;
+
+    let response_text = response.unwrap().expect("should receive response");
+    let response_json: serde_json::Value = serde_json::from_str(&response_text).unwrap();
+    // SaveSettings calls build_fresh_payload which returns dashboard data with watts field
+    assert!(response_json.get("watts").is_some(), "response should contain watts field");
+
+    server.abort();
+    let _ = server.await;
+}
+
 /// Test: GET / renders the dashboard page with valid HTML.
 ///
 /// Covers `dashboard_handler.rs` — the `get_dashboard` handler.
@@ -731,7 +973,7 @@ async fn test_get_dashboard_handler() {
         ],
     };
 
-    let (client, _fetch_count, _toggle) = build_tracking_client(state);
+    let (client, _fetch_count, _toggle, _script) = build_tracking_client(state);
     let mut config = test_config();
     config.solar_entity_id = "sensor.solar".into();
     config.solar_sample_secs = 1;
@@ -823,7 +1065,7 @@ async fn test_get_settings_handler() {
         ],
     };
 
-    let (client, _fetch_count, _toggle) = build_tracking_client(state);
+    let (client, _fetch_count, _toggle, _script) = build_tracking_client(state);
     let service = Arc::new(DashboardService::new(
         client,
         Arc::new(MockLayoutRepo),

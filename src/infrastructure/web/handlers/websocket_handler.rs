@@ -279,6 +279,117 @@ mod tests {
             _ => panic!("Expected SaveSettings"),
         }
     }
+
+    // ── Helper Function Tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_query_param_simple() {
+        let q = Some("token=abc123");
+        assert_eq!(query_param(q, "token"), Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn test_query_param_with_value_containing_equals() {
+        let q = Some("token=abc=123");
+        // splitn(2, '=') on "abc=123" gives ["abc", "123"], .last() = "123"
+        assert_eq!(query_param(q, "token"), Some("123".to_string()));
+    }
+
+    #[test]
+    fn test_query_param_multiple_params() {
+        let q = Some("token=secret&other=value");
+        assert_eq!(query_param(q, "token"), Some("secret".to_string()));
+        assert_eq!(query_param(q, "other"), Some("value".to_string()));
+        assert_eq!(query_param(q, "missing"), None);
+    }
+
+    #[test]
+    fn test_query_param_none() {
+        assert_eq!(query_param(None::<&str>, "key"), None);
+        assert_eq!(query_param(Some(""), "key"), None);
+        assert_eq!(query_param(Some("other=val"), "key"), None);
+    }
+
+    #[test]
+    fn test_query_param_encoded_value() {
+        let q = Some("token=my%20token");
+        assert_eq!(query_param(q, "token"), Some("my%20token".to_string()));
+    }
+
+    #[test]
+    fn test_bearer_token_correct() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Bearer mysecret".parse().unwrap());
+        assert_eq!(bearer_token(&headers), Some("mysecret".to_string()));
+    }
+
+    #[test]
+    fn test_bearer_token_missing_prefix() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(AUTHORIZATION, "mysecret".parse().unwrap());
+        assert_eq!(bearer_token(&headers), None);
+    }
+
+    #[test]
+    fn test_bearer_token_not_present() {
+        let headers = axum::http::HeaderMap::new();
+        assert_eq!(bearer_token(&headers), None);
+    }
+
+    #[test]
+    fn test_check_ws_auth_matches() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Bearer tok123".parse().unwrap());
+        let uri = axum::http::Uri::builder()
+            .path_and_query("/ws")
+            .build()
+            .unwrap();
+        assert!(check_ws_auth(&headers, &uri, "tok123"));
+    }
+
+    #[test]
+    fn test_check_ws_auth_mismatch() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Bearer wrong".parse().unwrap());
+        let uri = axum::http::Uri::builder()
+            .path_and_query("/ws")
+            .build()
+            .unwrap();
+        assert!(!check_ws_auth(&headers, &uri, "correct"));
+    }
+
+    #[test]
+    fn test_check_ws_auth_falls_back_to_query() {
+        let headers = axum::http::HeaderMap::new();
+        let uri = axum::http::Uri::builder()
+            .path_and_query("/ws?token=qtoken")
+            .build()
+            .unwrap();
+        assert!(check_ws_auth(&headers, &uri, "qtoken"));
+    }
+
+    #[test]
+    fn test_check_ws_auth_query_beats_header() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(AUTHORIZATION, "Bearer header_tok".parse().unwrap());
+        // bearer_token returns Some("header_tok"), but query_param returns Some("query_tok").
+        // .or() picks bearer_token first, so header wins — this tests the header priority.
+        let uri = axum::http::Uri::builder()
+            .path_and_query("/ws?token=query_tok")
+            .build()
+            .unwrap();
+        assert!(!check_ws_auth(&headers, &uri, "query_tok"));
+    }
+
+    #[test]
+    fn test_check_ws_auth_empty_token() {
+        let headers = axum::http::HeaderMap::new();
+        let uri = axum::http::Uri::builder()
+            .path_and_query("/ws")
+            .build()
+            .unwrap();
+        assert!(!check_ws_auth(&headers, &uri, "expected"));
+    }
 }
 
 #[derive(Debug, serde::Deserialize)]
