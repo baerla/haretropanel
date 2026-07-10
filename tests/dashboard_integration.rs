@@ -673,3 +673,199 @@ async fn ws_periodic_broadcast() {
     server.abort();
     let _ = server.await;
 }
+
+// ── HTTP Handler Integration Tests ─────────────────────────────────────
+// These tests cover dashboard_handler.rs and settings_handler.rs,
+// which have 0% coverage when only the WebSocket route is tested.
+
+use haretropanel::application::services::DashboardCacheConfig;
+use axum::http::StatusCode;
+
+/// Helper: build a full Axum router with ALL routes (dashboard + settings + WS).
+fn build_full_router(service: Arc<DashboardService>) -> Router {
+    use haretropanel::infrastructure::web::handlers::dashboard_handler::get_dashboard;
+    use haretropanel::infrastructure::web::handlers::settings_handler::get_entity_settings;
+    use haretropanel::infrastructure::web::handlers::websocket_handler::ws_solar;
+    use haretropanel::infrastructure::web::AppState;
+    use axum::routing::{get, post};
+
+    Router::new()
+        .route("/", get(get_dashboard))
+        .route("/ws/solar", get(ws_solar))
+        .route("/toggle", post(|| async { "ok" }))
+        .route("/run_script", post(|| async { "ok" }))
+        .route("/settings/entities", get(get_entity_settings))
+        .with_state(AppState {
+            dashboard_service: service,
+        })
+}
+
+/// Test: GET / renders the dashboard page with valid HTML.
+///
+/// Covers `dashboard_handler.rs` — the `get_dashboard` handler.
+#[tokio::test]
+async fn test_get_dashboard_handler() {
+    let state = DashboardState {
+        entities: vec![
+            Entity {
+                id: EntityId("sensor.solar".into()),
+                name: "Solar".into(),
+                kind: EntityKind::Sensor,
+                is_on: true,
+                value: Some("4200 W".into()),
+            },
+            Entity {
+                id: EntityId("cover.garage_left".into()),
+                name: "Garage Left".into(),
+                kind: EntityKind::Cover,
+                is_on: false,
+                value: None,
+            },
+            Entity {
+                id: EntityId("cover.garage_right".into()),
+                name: "Garage Right".into(),
+                kind: EntityKind::Cover,
+                is_on: true,
+                value: None,
+            },
+        ],
+    };
+
+    let (client, _fetch_count, _toggle) = build_tracking_client(state);
+    let mut config = test_config();
+    config.solar_entity_id = "sensor.solar".into();
+    config.solar_sample_secs = 1;
+
+    let service = Arc::new(DashboardService::new(
+        client,
+        Arc::new(MockLayoutRepo),
+        DashboardCacheConfig {
+            default_ttl_secs: 5,
+            light_ttl_secs: None,
+            switch_ttl_secs: None,
+            sensor_ttl_secs: None,
+            climate_ttl_secs: None,
+        },
+        config,
+    ));
+
+    let (listener, port) = bind_random().await;
+    let app = build_full_router(service);
+
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Make HTTP GET request to /
+    let resp = reqwest::Client::new()
+        .get(&format!("http://127.0.0.1:{port}/"))
+        .send()
+        .await
+        .expect("HTTP GET / should succeed");
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = resp.text().await.unwrap();
+    assert!(!body.is_empty(), "Dashboard should return non-empty body");
+    assert!(
+        body.contains("<!DOCTYPE html>") || body.contains("<!doctype html>") || body.contains("HARetroPanel"),
+        "Dashboard should contain HTML content"
+    );
+
+    // The page should contain entity names from our mock state
+    assert!(
+        body.contains("Solar") || body.contains("Garage"),
+        "Dashboard should contain entity names"
+    );
+
+    server.abort();
+    let _ = server.await;
+}
+
+/// Test: GET /settings/entities renders the settings page with valid HTML.
+///
+/// Covers `settings_handler.rs` — the `get_entity_settings` handler
+/// and the `EntitySettingsViewModel::from()` impl.
+#[tokio::test]
+async fn test_get_settings_handler() {
+    let state = DashboardState {
+        entities: vec![
+            Entity {
+                id: EntityId("light.bedroom".into()),
+                name: "Bedroom Light".into(),
+                kind: EntityKind::Light,
+                is_on: true,
+                value: None,
+            },
+            Entity {
+                id: EntityId("switch.outlet".into()),
+                name: "Power Outlet".into(),
+                kind: EntityKind::Switch,
+                is_on: false,
+                value: None,
+            },
+            Entity {
+                id: EntityId("script.morning_routine".into()),
+                name: "Morning Routine".into(),
+                kind: EntityKind::Script,
+                is_on: false,
+                value: None,
+            },
+            Entity {
+                id: EntityId("climate.thermostat".into()),
+                name: "Thermostat".into(),
+                kind: EntityKind::Climate,
+                is_on: true,
+                value: Some("21 °C".into()),
+            },
+        ],
+    };
+
+    let (client, _fetch_count, _toggle) = build_tracking_client(state);
+    let service = Arc::new(DashboardService::new(
+        client,
+        Arc::new(MockLayoutRepo),
+        DashboardCacheConfig {
+            default_ttl_secs: 5,
+            light_ttl_secs: None,
+            switch_ttl_secs: None,
+            sensor_ttl_secs: None,
+            climate_ttl_secs: None,
+        },
+        test_config(),
+    ));
+
+    let (listener, port) = bind_random().await;
+    let app = build_full_router(service);
+
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Make HTTP GET request to /settings/entities
+    let resp = reqwest::Client::new()
+        .get(&format!("http://127.0.0.1:{port}/settings/entities"))
+        .send()
+        .await
+        .expect("HTTP GET /settings/entities should succeed");
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = resp.text().await.unwrap();
+    assert!(!body.is_empty(), "Settings page should return non-empty body");
+    assert!(
+        body.contains("<!DOCTYPE html>") || body.contains("<!doctype html>") || body.contains("HARetroPanel"),
+        "Settings page should contain HTML content"
+    );
+
+    // The page should contain entity names from our mock state
+    assert!(body.contains("Bedroom Light") || body.contains("Solar"),
+        "Settings page should contain entity names, body: {}", &body[..body.len().min(500)]);
+
+    server.abort();
+    let _ = server.await;
+}

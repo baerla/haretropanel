@@ -33,6 +33,7 @@ tempfile = "3"
 async-tungstenite = { version = "0.28", features = ["tokio-runtime"] }
 axum = { version = "0.8", features = ["ws", "tokio"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 
 [package.metadata.askama]
 dir = "templates"
