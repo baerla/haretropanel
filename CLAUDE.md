@@ -14,6 +14,8 @@ cargo build --release              # Build release binary
 cargo test                         # Run unit tests
 cargo clippy                       # Lint
 cargo fmt                          # Format code
+make build                         # Full build (npm + cargo)
+make js-check                      # Transpile JS and validate ES2019
 ```
 
 ## Configuration
@@ -49,6 +51,8 @@ Service has an in-memory cache with per-entity-kind TTL. Writes (toggle/run_scri
 - `POST /run_script` — Run a script entity (form: `entity_id`)
 - `GET /settings/entities` — Entity visibility & page assignment settings
 - `POST /settings/entities` — Save settings
+- `GET /ws/solar` — WebSocket for real-time solar data
+- `GET /js/*` — Served transpiled JS from `public/js/`
 
 Templates live in `templates/` (Askama). View models in `infrastructure/web/viewmodels.rs`.
 
@@ -58,3 +62,24 @@ Templates live in `templates/` (Askama). View models in `infrastructure/web/view
 - `AppState` — Axum state container holding `Arc<DashboardService>`
 - Traits are defined in application layer, implemented in infrastructure (port/adaptor pattern)
 - Layout JSON supports legacy formats via fallback deserialization in `FsDashboardLayoutRepository::load_raw`
+
+## Frontend JavaScript
+
+All JS is in `src/js/`, transpiled to ES2019 (Safari 12) via Babel during build. Output goes to `public/js/`.
+
+Templates inject server data via `window.__HARetro__` before loading external scripts:
+
+```html
+<script>
+    window.__HARetro__ = {
+        chartLabels: {{ dashboard.solar.chart_labels_js | safe }},
+        chartValues: {{ dashboard.solar.chart_values_js | safe }},
+        // ... more data
+    };
+</script>
+<script src="/js/dashboard.js"></script>
+```
+
+When modifying template JavaScript, always edit `src/js/` files — never put inline `<script>` blocks.
+Use `make js-check` to verify ES2019 compliance (uses `es-check`).
+
