@@ -482,9 +482,9 @@
       var pumpInfoEl = document.getElementById('pump-info');
       if (pumpInfoEl) {
         if (data.pump_status.pump_on) {
-          pumpInfoEl.innerHTML = data.pump_status.is_correct ? '\u2705 Heat flowing into buffer' : '\u274c No heat transfer';
+          pumpInfoEl.innerHTML = data.pump_status.is_correct ? '\u2705 Wasser wird aufgeheizt' : '\u274c Kein Wärmefluss';
         } else {
-          pumpInfoEl.innerHTML = data.pump_status.is_correct ? '\u2705 Normal operation' : '\u274c Should be running';
+          pumpInfoEl.innerHTML = data.pump_status.is_correct ? '\u2705 Alles normal' : '\u274c Sollte gerade laufen';
         }
       }
     }

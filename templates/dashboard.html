@@ -76,12 +76,12 @@
                 <div id="pump-state" class="pump-state">{{ dashboard.pump_status.status_label }}</div>
                 <div id="pump-info" style="font-size: 13px; color: var(--muted); text-align: right;">
                     {% if dashboard.pump_status.pump_on %}
-                        {% if dashboard.pump_status.is_correct %}✅ Solaranlage speist in Puffer ein
-                        {% else %}❌ Pumpe läuft unnötig (kühlt Puffer aus)
+                        {% if dashboard.pump_status.is_correct %}✅ Solaranlage speist in Speicher ein
+                        {% else %}❌ Pumpe läuft unnötig (kühlt Speicher aus)
                         {% endif %}
                     {% else %}
                         {% if dashboard.pump_status.is_correct %}✅ Normalbetrieb (Pumpe aus)
-                        {% else %}❌ Pumpe sollte laufen (Puffer wird nicht aufgeheizt)
+                        {% else %}❌ Pumpe sollte laufen (Speicher wird nicht aufgeheizt)
                         {% endif %}
                     {% endif %}
                 </div>
@@ -92,7 +92,7 @@
                     <canvas id="bufferChart"></canvas>
                 </div>
                 <div id="buffer-top-wrapper" class="buffer-top-tile">
-                    <div class="buffer-top-name">Puffer Speicher Oben</div>
+                    <div class="buffer-top-name">Warmwasser</div>
                     <div id="buffer-top-value" class="buffer-top-value">{{ dashboard.buffer_top_temp }}</div>
                 </div>
             </div>
