@@ -3,10 +3,22 @@ FROM rust:1.96 AS builder
 
 WORKDIR /app
 
+# Install Node.js for JS transpilation
+RUN apt-get update && apt-get install -y curl ca-certificates
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+RUN apt-get install -y nodejs
+
 # Cache-friendly dependency build: copy manifest first
 COPY Cargo.toml Cargo.lock* ./
 COPY templates ./templates
 COPY src ./src
+COPY package.json package-lock.json* ./
+COPY babel.config.json ./
+COPY src/js ./src/js
+
+# Install JS deps and transpile
+RUN npm install
+RUN npm run build
 
 # Release build
 RUN cargo build --release
@@ -19,9 +31,9 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 
 WORKDIR /app
 
-# Copy binary and templates
+# Copy binary and transpiled JS
 COPY --from=builder /app/target/release/haretropanel /app/haretropanel
-COPY templates ./templates
+COPY --from=builder /app/public /app/public
 
 # Default env
 ENV HARETROPANEL_PORT=8080

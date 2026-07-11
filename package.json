@@ -1,0 +1,16 @@
+{
+  "name": "haretropanel",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:js": "babel src/js --out-dir public/js",
+    "build": "npm run build:js",
+    "check": "es-check es2019 public/js/**/*.js"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.24.0",
+    "@babel/core": "^7.24.0",
+    "@babel/preset-env": "^7.24.0",
+    "es-check": "^7.1.1"
+  }
+}

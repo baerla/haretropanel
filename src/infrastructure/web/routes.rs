@@ -1,4 +1,5 @@
 use axum::{routing::get, Router};
+use tower_http::services::ServeDir;
 
 use crate::infrastructure::web::handlers::dashboard_handler::get_dashboard;
 use crate::infrastructure::web::handlers::settings_handler::get_entity_settings;
@@ -10,5 +11,6 @@ pub fn build_router(state: AppState) -> Router {
         .route("/", get(get_dashboard))
         .route("/settings/entities", get(get_entity_settings))
         .route("/ws/solar", get(ws_solar))
+        .nest_service("/js", ServeDir::new("public/js"))
         .with_state(state)
 }
