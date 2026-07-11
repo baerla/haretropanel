@@ -565,7 +565,7 @@
 
             function updateSolarData(data) {
                 console.log('Solar data updated:', data.watts, 'W');
-                FL.info('SYNC', 'solar: ' + Math.round(data.watts) + 'W | charger: ' + (data.charger_amps ?? '-') + 'A | ' + (data.buffer_temps ? 'buffer_temps' : 'no buffer') + ' | ' + (data.pump_status ? 'pump' : 'no pump'));
+                FL.info('SYNC', 'solar: ' + Math.round(data.watts) + 'W | charger: ' + (data.charger_amps != null ? data.charger_amps : '-') + 'A | ' + (data.buffer_temps ? 'buffer_temps' : 'no buffer') + ' | ' + (data.pump_status ? 'pump' : 'no pump'));
 
                 // Update current output stat
                 var wattsEl = document.querySelector('.stat:first-child .stat-value');
