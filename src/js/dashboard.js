@@ -81,15 +81,12 @@
     var header = document.getElementById('debugHeader');
     var collapseBtn = document.getElementById('debugCollapse');
     var clearBtn = document.getElementById('debugClear');
-    var fab = document.getElementById('debugToggle');
     if (header) {
         header.addEventListener('click', function () {
             panel.classList.toggle('collapsed');
             if (panel.classList.contains('collapsed')) {
-                fab.classList.remove('hidden');
                 if (collapseBtn) collapseBtn.textContent = '[ + ]';
             } else {
-                fab.classList.add('hidden');
                 if (collapseBtn) collapseBtn.textContent = '[ - ]';
             }
         });
@@ -104,12 +101,6 @@
         clearBtn.addEventListener('click', function (e) {
             e.stopPropagation();
             FL.clear();
-        });
-    }
-    if (fab) {
-        fab.addEventListener('click', function () {
-            panel.classList.remove('collapsed');
-            fab.classList.add('hidden');
         });
     }
 

@@ -481,11 +481,12 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            transition: max-height 0.2s ease;
+            transition: max-height 0.2s ease, width 0.2s ease;
         }
 
         .debug-log-panel.collapsed {
-            max-height: 36px;
+            max-height: 2rem;
+            width: 14rem;
         }
 
         .debug-log-header {
