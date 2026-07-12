@@ -17,11 +17,7 @@ COPY babel.config.json ./
 COPY src/js ./src/js
 
 # Install JS deps and transpile
-RUN npm install
-RUN npm run build
-
-# Release build
-RUN cargo build --release
+RUN npm install && make build
 
 # 2. Runtime stage - minimal Linux
 FROM debian:bookworm-slim
