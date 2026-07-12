@@ -283,17 +283,27 @@
     }
 
     function renderPumpBar(states, labels) {
+        var bufferChart = document.getElementById('bufferChart');
+        if (!bufferChart) { FL.warn('PUMP', 'bufferChart not found'); return; }
+        var bufferRect = bufferChart.getBoundingClientRect();
+        if (bufferRect.width === 0 || bufferRect.height === 0) {
+            FL.warn('PUMP', 'bufferChart has zero width/height, skipping pump bar render');
+            return;
+        }
+        // FL.info('PUMP', 'bufferChart width=' + bufferRect.width + ' height=' + bufferRect.height);
         var canvas = document.getElementById('pumpStatusChart');
         if (!canvas) { FL.warn('PUMP', 'canvas not found'); return; }
-        var ctx = canvas.getContext('2d');
         var dpr = window.devicePixelRatio || 1;
+        canvas.width = (bufferRect.width - 44) * dpr;
+        canvas.height = 20 * dpr; // fixed height for pump bar
         var rect = canvas.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return;
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
+        var ctx = canvas.getContext('2d');
         ctx.scale(dpr, dpr);
         var w = rect.width;
         var h = rect.height;
+
+        // FL.info('PUMP', 'renderPumpBar: canvas width=' + w + ' height=' + h + ' dpr=' + dpr);
 
         var now = Date.now();
         var historyMs = historyMinutes * 60 * 1000;
@@ -426,6 +436,12 @@
                 bufferChart.data.datasets[3].data = (data.buffer_temps.solar_return || []).slice(-maxDataPoints);
                 bufferChart.update();
             }
+        }
+
+        var bufferTopEl = document.getElementById('buffer-top-value');
+        if (bufferTopEl && data.buffer_temps.buffer_top.length > 0) {
+            var lastTop = data.buffer_temps.buffer_top[data.buffer_temps.buffer_top.length - 1];
+            if (lastTop != null) bufferTopEl.textContent = parseFloat(lastTop).toFixed(1) + '\u00b0C';
         }
 
         // Update pump status bar
