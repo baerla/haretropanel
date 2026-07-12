@@ -306,39 +306,12 @@
             FL.info('PUMP', 'sample state t=' + states[0].t + ' ts=' + new Date(states[0].t).toISOString());
         }
 
-        // Draw background (red = off)
-        ctx.fillStyle = 'rgba(220, 80, 80, 0.55)';
-        ctx.fillRect(0, 0, w, h);
-
-        // Overlay green segments where pump was on
-        var greenSegments = 0;
+        // Draw equal-width segments: each state gets 1/n of the bar
+        var segWidth = w / states.length;
         for (var i = 0; i < states.length; i++) {
-            var s = states[i];
-            var segStart = Math.max(s.t, windowStart);
-            var x1 = ((segStart - windowStart) / (windowEnd - windowStart)) * w;
-
-            // Find end of consecutive same-state run
-            var j = i;
-            var x2 = x1;
-            while (j < states.length && states[j].on === s.on) {
-                var next = states[j];
-                var nextStart = Math.max(next.t, windowStart);
-                var nextX = ((nextStart - windowStart) / (windowEnd - windowStart)) * w;
-                if (j < states.length - 1) {
-                    var nx2 = ((Math.max(states[j + 1].t, windowStart) - windowStart) / (windowEnd - windowStart)) * w;
-                    nextX = nx2;
-                }
-                x2 = Math.max(x2, nextX);
-                j++;
-            }
-            if (s.on) {
-                ctx.fillStyle = 'rgba(50, 200, 100, 0.7)';
-                ctx.fillRect(x1, 0, Math.max(x2 - x1, 1), h);
-                greenSegments++;
-            }
-            i = j - 1;
+            ctx.fillStyle = states[i].on ? 'rgba(50, 200, 100, 0.7)' : 'rgba(220, 80, 80, 0.55)';
+            ctx.fillRect(i * segWidth, 0, segWidth, h);
         }
-        FL.info('PUMP', 'drawn ' + greenSegments + ' green segments out of ' + states.length + ' total');
 
         // Add subtle border
         ctx.strokeStyle = 'rgba(255,255,255,0.15)';
