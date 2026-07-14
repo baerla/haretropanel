@@ -285,8 +285,8 @@
         var canvas = document.getElementById('pumpStatusChart');
         if (!canvas) { FL.warn('PUMP', 'canvas not found'); return; }
         var dpr = window.devicePixelRatio || 1;
-        canvas.width = (bufferRect.width - 44) * dpr;
-        canvas.height = 20 * dpr; // fixed height for pump bar
+        canvas.width = (bufferRect.width * 0.95);
+        canvas.height = 20; // fixed height for pump bar
         var rect = canvas.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) return;
         var ctx = canvas.getContext('2d');
@@ -443,7 +443,7 @@
         if (!wrapper) { FL.warn('GARAGE', side + ' wrapper not found'); return; }
         var statusEl = wrapper.querySelector('.status');
         var btnEl = wrapper.querySelector('button');
-        FL.info('GARAGE', side + ': ' + data.status + ' \u2192 ' + data.action);
+        // FL.info('GARAGE', side + ': ' + data.status + ' \u2192 ' + data.action);
         if (statusEl) statusEl.textContent = data.status;
         if (btnEl) {
             btnEl.textContent = data.action;
