@@ -446,6 +446,112 @@ impl DashboardService {
             .unwrap_or(0.0)
     }
 
+    /// Build a WS broadcast payload from the current dashboard state.
+    pub async fn build_ws_payload(&self) -> serde_json::Value {
+        let cfg = self.config();
+        let state = match self.get_dashboard().await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("build_ws_payload: fetch failed: {}", e);
+                return serde_json::json!({ "error": e.to_string() });
+            }
+        };
+        let solar_watts = self.parse_solar_watts(&state);
+        let chart_points = self.compute_solar_chart().await;
+        let charger_state = self.compute_car_state(&state).await;
+        let buffer_chart_points = self.compute_buffer_temp_chart().await;
+        let buffer_labels = buffer_chart_points.labels;
+        let buffer_top_vals: Vec<String> = buffer_chart_points
+            .buffer_top
+            .iter()
+            .map(|v| format!("{:.1}", v))
+            .collect();
+        let buffer_bottom_vals: Vec<String> = buffer_chart_points
+            .buffer_bottom
+            .iter()
+            .map(|v| format!("{:.1}", v))
+            .collect();
+        let solar_flow_vals: Vec<String> = buffer_chart_points
+            .solar_flow
+            .iter()
+            .map(|v| format!("{:.1}", v))
+            .collect();
+        let solar_return_vals: Vec<String> = buffer_chart_points
+            .solar_return
+            .iter()
+            .map(|v| format!("{:.1}", v))
+            .collect();
+        let pump_status = self.compute_pump_status(&state);
+
+        let make_garage_status =
+            |entity_id: &str, default_name: &str| -> serde_json::Value {
+                state
+                    .entities
+                    .iter()
+                    .find(|e| e.id.0.as_str() == entity_id)
+                    .map(|e| {
+                        let is_open = e.is_on;
+                        let name = e.name.clone();
+                        let status = if is_open { "Offen" } else { "Geschlossen" };
+                        let action = if is_open { "Schließen" } else { "Öffnen" };
+                        let button_class = if is_open {
+                            "garage-btn garage-open"
+                        } else {
+                            "garage-btn garage-closed"
+                        };
+                        serde_json::json!({
+                            "name": name,
+                            "status": status,
+                            "action": action,
+                            "button_class": button_class,
+                        })
+                    })
+                    .unwrap_or_else(|| {
+                        serde_json::json!({
+                            "name": default_name,
+                            "status": "Geschlossen",
+                            "action": "Öffnen",
+                            "button_class": "garage-btn garage-closed",
+                        })
+                    })
+            };
+
+        serde_json::json!({
+            "watts": solar_watts,
+            "max_watts": cfg.solar_max_watts,
+            "percent": if cfg.solar_max_watts > 0.0 {
+                ((solar_watts / cfg.solar_max_watts) * 100.0).round().clamp(0.0, 100.0) as u8
+            } else {
+                0
+            },
+            "chart_labels": chart_points.labels,
+            "chart_values": chart_points.values,
+            "charger_amps": charger_state.charger_value,
+            "charger_status": charger_state.status,
+            "charger_car_state": charger_state.car_state_label,
+            "charger_car_state_class": charger_state.car_state_class,
+            "charger_car_connected": charger_state.car_connected,
+            "charger_charging": charger_state.car_charging,
+            "charger_paused": charger_state.paused,
+            "garage_left": make_garage_status(cfg.garage_left_status_entity_id.as_str(), "Garage Left"),
+            "garage_right": make_garage_status(cfg.garage_right_status_entity_id.as_str(), "Garage Right"),
+            "buffer_temps": {
+                "labels": buffer_labels,
+                "buffer_top": buffer_top_vals,
+                "buffer_bottom": buffer_bottom_vals,
+                "solar_flow": solar_flow_vals,
+                "solar_return": solar_return_vals,
+            },
+            "pump_status": {
+                "pump_on": pump_status.pump_on,
+                "is_correct": pump_status.is_correct,
+                "status_label": pump_status.status_label,
+                "css_class": pump_status.css_class,
+            },
+            "pump_states": self.periodic_pump_states().await,
+        })
+    }
+
     pub async fn compute_solar_chart(&self) -> SolarChartPoints {
         let history = self.solar_history_points().await;
         let cfg = self.config();
@@ -710,6 +816,34 @@ impl DashboardService {
                 Ok(())
             }
         }
+    }
+
+    /// Toggle a garage cover and poll HA for the next 10 seconds, broadcasting each update.
+    pub fn toggle_entity_with_poll(this: Arc<Self>, id: EntityId) {
+        tokio::spawn(async move {
+            // First: actually toggle the cover
+            match this.toggle_entity(&id).await {
+                Ok(()) => {}
+                Err(e) => {
+                    tracing::error!("toggle_entity_with_poll: toggle failed: {}", e);
+                    let err_payload = serde_json::json!({ "error": e.to_string() });
+                    let _ = this.ws_tx.send(err_payload);
+                    return;
+                }
+            }
+            tracing::info!(entity_id = %id, "Garage toggle sent, starting 10s polling burst");
+
+            // Poll every 1 second for up to 10 seconds
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            for _ in 0..10 {
+                interval.tick().await;
+                let payload = this.build_ws_payload().await;
+                if this.ws_tx.send(payload).is_err() {
+                    tracing::warn!("toggle_entity_with_poll: WS send failed (no receivers)");
+                }
+            }
+            tracing::info!(entity_id = %id, "Garage polling burst complete (10s)");
+        });
     }
 
     pub async fn run_script(&self, id: &EntityId) -> AppResult<()> {

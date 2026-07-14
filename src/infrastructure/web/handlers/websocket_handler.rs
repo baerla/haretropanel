@@ -108,6 +108,18 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     let mut stream = socket_stream;
     while let Some(Ok(msg)) = stream.next().await {
         if let Message::Text(text) = msg {
+            // Check if this is a garage cover toggle — needs Arc-based burst polling
+            if let Ok(cmd) = serde_json::from_str::<ClientCommand>(&text) {
+                if let ClientCommand::Toggle { ref entity_id } = cmd {
+                    let is_garage = entity_id.starts_with("cover.")
+                        && (entity_id.contains("garage") || entity_id.contains("garagentor"));
+                    if is_garage {
+                        let id = crate::domain::EntityId(entity_id.clone());
+                        DashboardService::toggle_entity_with_poll(service.clone(), id);
+                        continue; // burst polling handles broadcasts, no single response needed
+                    }
+                }
+            }
             let payload = handle_client_command(&text, &service).await;
             let response_msg = Message::Text(payload.to_string().into());
             if cmd_tx.send(response_msg).await.is_err() {
@@ -421,6 +433,19 @@ async fn handle_client_command(text: &str, service: &DashboardService) -> serde_
         ClientCommand::Toggle { entity_id } => {
             info!("WS toggle: {}", entity_id);
             let id = crate::domain::EntityId(entity_id);
+            // Garage covers: use burst polling for real-time state updates
+            let is_garage_cover = id
+                .0
+                .starts_with("cover.")
+                && (id.0.contains("garage") || id.0.contains("garagentor"));
+            // Garage covers handled via spawned task, skip build_fresh_payload
+            if is_garage_cover {
+                warn!("Garage toggle dispatched, but service is &DashboardService — need Arc");
+                return serde_json::json!({
+                    "type": "error",
+                    "message": "Garage toggle requires Arc",
+                });
+            }
             if let Err(e) = service.toggle_entity(&id).await {
                 error!("WS toggle failed: {}", e);
                 return serde_json::json!({
