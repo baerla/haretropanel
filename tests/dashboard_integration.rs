@@ -33,6 +33,15 @@ impl HomeAssistantClient for MockHaClient {
     ) -> haretropanel::shared::error::AppResult<()> {
         Ok(())
     }
+
+    async fn call_service_raw(
+        &self,
+        _domain: &str,
+        _service: &str,
+        _body: serde_json::Value,
+    ) -> haretropanel::shared::error::AppResult<()> {
+        Ok(())
+    }
 }
 
 struct MockLayoutRepo;
@@ -403,6 +412,15 @@ impl HomeAssistantClient for TrackingHaClient {
         _entity_id: &EntityId,
     ) -> haretropanel::shared::error::AppResult<()> {
         self.run_script_called.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    async fn call_service_raw(
+        &self,
+        _domain: &str,
+        _service: &str,
+        _body: serde_json::Value,
+    ) -> haretropanel::shared::error::AppResult<()> {
         Ok(())
     }
 }

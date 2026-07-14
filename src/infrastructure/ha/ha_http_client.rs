@@ -222,6 +222,15 @@ impl HomeAssistantClient for HaHttpClient {
         tracing::debug!(entity_id = %id_str, "Calling HA script turn_on service");
         self.call_service("script", "turn_on", body).await
     }
+
+    async fn call_service_raw(
+        &self,
+        domain: &str,
+        service: &str,
+        body: serde_json::Value,
+    ) -> AppResult<()> {
+        self.call_service(domain, service, body).await
+    }
 }
 
 #[cfg(test)]

@@ -15,7 +15,7 @@ use crate::{
     infrastructure::web::viewmodels::{
         BufferTempChartPoints, ChargerState, PumpViewModel, SolarChartPoints,
     },
-    shared::error::AppResult,
+    shared::error::{AppError, AppResult},
 };
 
 #[async_trait]
@@ -669,11 +669,47 @@ impl DashboardService {
     }
 
     pub async fn toggle_entity(&self, id: &EntityId) -> AppResult<()> {
-        tracing::info!(entity_id = %id, "Toggling entity via Home Assistant");
-        self.ha_client.toggle(id).await?;
-        tracing::debug!(entity_id = %id, "Entity toggled successfully, invalidating cache");
-        self.invalidate_cache().await;
-        Ok(())
+        let id_str = &id.0;
+        let parts: Vec<_> = id_str.split('.').collect();
+        let (domain, sub) = if parts.len() < 2 {
+            return Err(AppError::Internal(format!("Invalid entity_id: {id_str}")));
+        } else {
+            (parts[0], parts[1])
+        };
+
+        match (domain, sub) {
+            // Garage covers need explicit open/close instead of toggle
+            ("cover", s) if s.contains("garage") || s.contains("garagentor") => {
+                let state = self.get_dashboard().await?;
+                let is_open = state
+                    .entities
+                    .iter()
+                    .find(|e| e.id.0.as_str() == id_str)
+                    .map(|e| e.is_on)
+                    .unwrap_or(false);
+                let service = if is_open {
+                    "close_cover"
+                } else {
+                    "open_cover"
+                };
+                tracing::info!(
+                    entity_id = %id_str,
+                    service = %service,
+                    "Toggling garage cover via HA"
+                );
+                let body = serde_json::json!({ "entity_id": id_str });
+                self.ha_client.call_service_raw("cover", service, body).await?;
+                self.invalidate_cache().await;
+                Ok(())
+            }
+            _ => {
+                tracing::info!(entity_id = %id, "Toggling entity via Home Assistant");
+                self.ha_client.toggle(id).await?;
+                tracing::debug!(entity_id = %id, "Entity toggled successfully, invalidating cache");
+                self.invalidate_cache().await;
+                Ok(())
+            }
+        }
     }
 
     pub async fn run_script(&self, id: &EntityId) -> AppResult<()> {
@@ -928,6 +964,15 @@ mod tests {
 
         async fn run_script(&self, id: &EntityId) -> AppResult<()> {
             self.scripts.write().await.push(id.to_string());
+            Ok(())
+        }
+
+        async fn call_service_raw(
+            &self,
+            _domain: &str,
+            _service: &str,
+            _body: serde_json::Value,
+        ) -> AppResult<()> {
             Ok(())
         }
     }

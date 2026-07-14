@@ -233,4 +233,13 @@ impl HomeAssistantClient for DemoHaClient {
     async fn run_script(&self, _entity_id: &EntityId) -> AppResult<()> {
         Ok(())
     }
+
+    async fn call_service_raw(
+        &self,
+        _domain: &str,
+        _service: &str,
+        _body: serde_json::Value,
+    ) -> AppResult<()> {
+        Ok(())
+    }
 }
